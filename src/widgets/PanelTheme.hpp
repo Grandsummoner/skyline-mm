@@ -1,12 +1,18 @@
 #pragma once
-#include "../plugin.hpp"
+#include <rack.hpp>
 #include <settings.hpp>
+
+extern Plugin* pluginInstance;
+extern float maybeDefaultContrast;
+extern int maybeDefaultTheme;
+void maybeSaveSettings();
+void maybeApplyContrastToAll(float contrast);
+void maybeApplyThemeToAll(int theme);
 
 static constexpr float panelContrastDefault = 255.0f;
 static constexpr float panelContrastMin = 160.0f;
 static constexpr float panelContrastMax = 255.0f;
-
-inline float globalPanelContrast = panelContrastDefault;
+static float globalPanelContrast = panelContrastDefault;
 
 struct PanelContrastWidget : TransparentWidget {
     float* contrastSrc = nullptr;
