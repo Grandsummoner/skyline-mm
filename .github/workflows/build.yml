@@ -8,51 +8,25 @@ on:
 
 jobs:
   build:
-    name: Build ${{ matrix.platform }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux
-          - os: windows-latest
-            platform: windows
+    name: Build Windows
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download Rack SDK (Linux)
-        if: matrix.platform == 'linux'
-        run: |
-          curl -sLo rack-sdk.zip "https://vcvrack.com/downloads/Rack-SDK-2.6.0-lin-x64.zip"
-          unzip -q rack-sdk.zip
-
-      - name: Download Rack SDK (Windows)
-        if: matrix.platform == 'windows'
+      - name: Download Rack SDK
         shell: bash
         run: |
           curl -sLo rack-sdk.zip "https://vcvrack.com/downloads/Rack-SDK-2.6.0-win-x64.zip"
           unzip -q rack-sdk.zip
 
-      - name: Build (Linux)
-        if: matrix.platform == 'linux'
-        run: |
-          make RACK_DIR=${{ github.workspace }}/Rack-SDK
-
-      - name: Package (Linux)
-        if: matrix.platform == 'linux'
-        run: |
-          make dist RACK_DIR=${{ github.workspace }}/Rack-SDK
-
-      - name: Build (Windows)
-        if: matrix.platform == 'windows'
+      - name: Build
         shell: bash
         run: |
           export RACK_DIR=$(pwd)/Rack-SDK
           make RACK_DIR=$(pwd)/Rack-SDK
 
-      - name: Package (Windows)
-        if: matrix.platform == 'windows'
+      - name: Package
         shell: bash
         run: |
           export RACK_DIR=$(pwd)/Rack-SDK
@@ -61,5 +35,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: plugin-${{ matrix.platform }}
+          name: plugin-windows
           path: dist/
