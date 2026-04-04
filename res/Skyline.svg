@@ -1,29 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="60.96" height="380">
+<svg xmlns="http://www.w3.org/2000/svg" width="61" height="380">
 
-  <rect width="60.96" height="330" fill="#1a1a2e"/>
+  <rect width="61" height="330" fill="#1a1a2e"/>
 
-  <rect y="330" width="60.96" height="50" fill="#ffffff"/>
+  <rect y="330" width="61" height="50" fill="#ffffff"/>
 
-  <text x="30.48" y="14"
+  <text x="30" y="14"
     font-family="Arial, sans-serif"
     font-size="10" font-weight="normal"
     fill="#FFC800"
     text-anchor="middle">maybe</text>
 
-  <text x="30.48" y="26"
+  <text x="30" y="26"
     font-family="Arial, sans-serif"
     font-size="8" font-weight="bold"
     fill="#FFC800"
     text-anchor="middle">SKYLINE</text>
 
-  <text x="30.48" y="103"
+  <text x="30" y="103"
     font-family="Arial, sans-serif"
     font-size="8" font-weight="bold"
     fill="#ffffff"
     text-anchor="middle">LEVEL</text>
-
-  <circle cx="30" cy="123" r="15"
-    fill="none" stroke="#555555" stroke-width="1"/>
 
   <text x="15" y="180"
     font-family="Arial, sans-serif"
@@ -43,10 +40,6 @@
     fill="#ffffff"
     text-anchor="middle">GATE</text>
 
-  <circle cx="15" cy="200" r="12" fill="none" stroke="#555555" stroke-width="1"/>
-  <circle cx="15" cy="225" r="12" fill="none" stroke="#555555" stroke-width="1"/>
-  <circle cx="15" cy="250" r="12" fill="none" stroke="#555555" stroke-width="1"/>
-
   <text x="15" y="334"
     font-family="Arial, sans-serif"
     font-size="7" font-weight="bold"
@@ -64,9 +57,5 @@
     font-size="7" font-weight="bold"
     fill="#000000"
     text-anchor="middle">GATE</text>
-
-  <circle cx="15" cy="343" r="12" fill="none" stroke="#aaaaaa" stroke-width="1"/>
-  <circle cx="45" cy="343" r="12" fill="none" stroke="#aaaaaa" stroke-width="1"/>
-  <circle cx="15" cy="368" r="12" fill="none" stroke="#aaaaaa" stroke-width="1"/>
 
 </svg>
