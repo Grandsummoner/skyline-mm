@@ -46,20 +46,19 @@ struct PanelThemeHelper {
         sashimiPanel = createPanel(asset::plugin(pluginInstance, "res/" + baseName + "_Sashimi.svg"));
         widget->setPanel(sashimiPanel);
 
-        boringPanel = new SvgPanel();
-        boringPanel->setBackground(Svg::load(asset::plugin(pluginInstance, "res/" + baseName + "_Boring.svg")));
-        boringPanel->visible = false;
-        widget->addChild(boringPanel);
+        auto loadPanel = [&](SvgPanel*& panel, const std::string& name) {
+            std::shared_ptr<Svg> svg = Svg::load(asset::plugin(pluginInstance, "res/" + name));
+            if (svg) {
+                panel = new SvgPanel();
+                panel->setBackground(svg);
+                panel->visible = false;
+                widget->addChild(panel);
+            }
+        };
 
-        toiletPaperPanel = new SvgPanel();
-        toiletPaperPanel->setBackground(Svg::load(asset::plugin(pluginInstance, "res/" + baseName + "_ToiletPaper.svg")));
-        toiletPaperPanel->visible = false;
-        widget->addChild(toiletPaperPanel);
-
-        winePanel = new SvgPanel();
-        winePanel->setBackground(Svg::load(asset::plugin(pluginInstance, "res/" + baseName + "_Wine.svg")));
-        winePanel->visible = false;
-        widget->addChild(winePanel);
+        loadPanel(boringPanel, baseName + "_Boring.svg");
+        loadPanel(toiletPaperPanel, baseName + "_ToiletPaper.svg");
+        loadPanel(winePanel, baseName + "_Wine.svg");
 
         if (contrastSrc) {
             contrastWidget = new PanelContrastWidget(widget->box.size, contrastSrc);
