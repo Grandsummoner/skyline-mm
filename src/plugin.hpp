@@ -8,4 +8,4 @@ extern Plugin* pluginInstance;
 
 // Declare one line per module you add later
 // Example: extern Model* modelMyModule;
-extern Model* modelMyModule;
+extern Model* modelSkyline;
