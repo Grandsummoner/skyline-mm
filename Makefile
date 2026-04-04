@@ -1,18 +1,9 @@
+# maybe VCV Rack Plugin
+
 RACK_DIR ?= ../Rack-SDK
 
-SLUG = maybe
-VERSION = 2.0.0
+SOURCES += $(wildcard src/*.cpp)
 
-FLAGS +=
-CFLAGS +=
-CXXFLAGS +=
-
-LDFLAGS +=
-
-SOURCES += src/plugin.cpp
-SOURCES += src/Skyline.cpp
-
-DISTRIBUTABLES += res
-DISTRIBUTABLES += plugin.json
+DISTRIBUTABLES += res $(wildcard LICENSE*)
 
 include $(RACK_DIR)/plugin.mk
