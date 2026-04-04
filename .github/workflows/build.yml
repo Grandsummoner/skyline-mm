@@ -8,44 +8,34 @@ on:
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            sdk-url: https://vcvrack.com/downloads/Rack-SDK-2.6.0-lin-x64.zip
-          - os: macos-latest
-            sdk-url: https://vcvrack.com/downloads/Rack-SDK-2.6.0-mac-x64+arm64.zip
-          - os: windows-latest
-            sdk-url: https://vcvrack.com/downloads/Rack-SDK-2.6.0-win-x64.zip
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download Rack SDK
-        shell: bash
+      - name: Install build dependencies
         run: |
-          curl -sLo rack-sdk.zip "${{ matrix.sdk-url }}"
+          sudo apt-get update
+          sudo apt-get install -y curl unzip build-essential
+
+      - name: Download Rack SDK
+        run: |
+          curl -sLo rack-sdk.zip "https://vcvrack.com/downloads/Rack-SDK-2.6.0-lin-x64.zip"
           unzip -q rack-sdk.zip
+          echo "Extracted:"
           ls -la
 
       - name: Build
-        shell: bash
         run: |
           export RACK_DIR=${{ github.workspace }}/Rack-SDK
-          echo "RACK_DIR=$RACK_DIR"
-          ls -la
-          make
+          make RACK_DIR=${{ github.workspace }}/Rack-SDK
 
       - name: Package
-        shell: bash
         run: |
-          export RACK_DIR=${{ github.workspace }}/Rack-SDK
-          make dist
+          make dist RACK_DIR=${{ github.workspace }}/Rack-SDK
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: plugin-${{ matrix.os }}
+          name: plugin-linux
           path: dist/
