@@ -6,12 +6,6 @@
 static constexpr float panelContrastDefault = 255.0f;
 static constexpr float panelContrastMin = 160.0f;
 static constexpr float panelContrastMax = 255.0f;
-static float globalPanelContrast = panelContrastDefault;
-
-static constexpr float panelContrastDefault = 255.0f;
-static constexpr float panelContrastMin = 160.0f;
-static constexpr float panelContrastMax = 255.0f;
-static float globalPanelContrast = panelContrastDefault;
 
 struct PanelContrastWidget : TransparentWidget {
     float* contrastSrc = nullptr;
