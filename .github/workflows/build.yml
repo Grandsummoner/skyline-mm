@@ -20,6 +20,10 @@ jobs:
           curl -sLo rack-sdk.zip "https://vcvrack.com/downloads/Rack-SDK-2.6.0-win-x64.zip"
           unzip -q rack-sdk.zip
 
+      - name: Check createPanel
+        shell: bash
+        run: grep -n "createPanel" $(pwd)/Rack-SDK/include/helpers.hpp | head -20
+
       - name: Build
         shell: bash
         run: |
