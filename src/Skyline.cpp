@@ -68,6 +68,7 @@ struct Skyline : Module {
         MUTE_PARAM,
         LENGTH_PARAM,
         SHIFT_PARAM,
+        SCALE_PARAM,
         SAVE_PARAM,
         RECALL_PARAM,
         // 8 sliders
@@ -94,6 +95,7 @@ struct Skyline : Module {
         MUTE_LIGHT,
         LENGTH_LIGHT,
         SHIFT_LIGHT,
+        SCALE_LIGHT,
         SAVE_LIGHT,
         RECALL_LIGHT,
         NUM_LIGHTS
@@ -123,6 +125,7 @@ struct Skyline : Module {
     bool muteMode   = false;
     bool lengthMode = false;
     bool shiftMode  = false;
+    bool scaleMode  = false;
     bool saveMode   = false;
     bool recallMode = false;
 
@@ -133,6 +136,7 @@ struct Skyline : Module {
     dsp::SchmittTrigger muteTrig;
     dsp::SchmittTrigger lengthTrig;
     dsp::SchmittTrigger shiftTrig;
+    dsp::SchmittTrigger scaleTrig;
     dsp::SchmittTrigger saveTrig;
     dsp::SchmittTrigger recallTrig;
     int  divCount    = 0;
@@ -152,6 +156,7 @@ struct Skyline : Module {
         configButton(MUTE_PARAM,   "Mute Mode");
         configButton(LENGTH_PARAM, "Length Mode");
         configButton(SHIFT_PARAM,  "Shift Mode");
+        configButton(SCALE_PARAM, "Scale Mode");
         configButton(SAVE_PARAM,   "Save Preset");
         configButton(RECALL_PARAM, "Recall Preset");
 
@@ -221,7 +226,11 @@ struct Skyline : Module {
         }
         if (shiftTrig.process(params[SHIFT_PARAM].getValue())) {
             shiftMode  = !shiftMode;
-            muteMode   = lengthMode = saveMode = recallMode = false;
+            muteMode   = lengthMode = scaleMode = saveMode = recallMode = false;
+        }
+        if (scaleTrig.process(params[SCALE_PARAM].getValue())) {
+            scaleMode  = !scaleMode;
+            muteMode   = lengthMode = shiftMode = saveMode = recallMode = false;
         }
         if (saveTrig.process(params[SAVE_PARAM].getValue())) {
             saveMode   = !saveMode;
@@ -302,9 +311,9 @@ struct Skyline : Module {
         // Record slider to current step position for each channel on every clock tick
         // (handled in clock section below)
 
-        // ---- Scale via slider: manual p.13 ----
+        // ---- Scale via slider (SHIFT or SCALE mode): manual p.13 ----
         // "In SHIFT mode, slider position sets scale for selected channel"
-        if (shiftMode) {
+        if (shiftMode || scaleMode) {
             float sliderVal = params[SLIDER_PARAMS + selectedChan].getValue();
             scaleIndex[selectedChan] = (int)(sliderVal / 5.0f * 15.0f);
             scaleIndex[selectedChan] = clamp(scaleIndex[selectedChan], 0, 15);
@@ -396,6 +405,7 @@ struct Skyline : Module {
         lights[MUTE_LIGHT].setBrightness(muteMode ? 1.f : 0.f);
         lights[LENGTH_LIGHT].setBrightness(lengthMode ? 1.f : 0.f);
         lights[SHIFT_LIGHT].setBrightness(shiftMode ? 1.f : 0.f);
+        lights[SCALE_LIGHT].setBrightness(scaleMode ? 1.f : 0.f);
         lights[SAVE_LIGHT].setBrightness(saveMode ? 1.f : 0.f);
         lights[RECALL_LIGHT].setBrightness(recallMode ? 1.f : 0.f);
     }
@@ -456,89 +466,80 @@ struct Skyline : Module {
         if (j) for(int ch=0;ch<8;ch++) scaleIndex[ch]=(int)json_integer_value(json_array_get(j,ch));
         j = json_object_get(root, "chanMuted");
         if (j) for(int ch=0;ch<8;ch++) chanMuted[ch]=json_boolean_value(json_array_get(j,ch));
-        j = json_object_get(root, "stepMuted");
-        if (j) { int idx=0; for(int ch=0;ch<8;ch++) for(int s=0;s<16;s++) stepMuted[ch][s]=json_boolean_value(json_array_get(j,idx++)); }
-        j = json_object_get(root, "frozen");
-        if (j) for(int ch=0;ch<8;ch++) frozen[ch]=json_boolean_value(json_array_get(j,ch));
-        j = json_object_get(root, "selectedChan");
-        if (j) selectedChan=(int)json_integer_value(j);
-    }
-};
-
-// ============================================================
 struct SkylineWidget : ModuleWidget {
-// ============================================================
     SkylineWidget(Skyline* module) {
         setModule(module);
         setPanel(createPanel(asset::plugin(pluginInstance, "res/Skyline.svg")));
 
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, box.size.y - RACK_GRID_WIDTH)));
+        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, box.size.y - RACK_GRID_WIDTH)));
 
-        // ---- Global controls (SVG coordinates = mm directly) ----
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(26,  50)), module, Skyline::CLOCK_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(45,  50)), module, Skyline::RESET_INPUT));
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(72,  50)), module, Skyline::OFFSET_PARAM));
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(91,  50)), module, Skyline::DIVIDE_PARAM));
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(111, 50)), module, Skyline::ATTENUATE_PARAM));
+        // Channel x positions matching SVG exactly (mm)
+        const float cX[8] = {8.89f,20.96f,33.02f,45.09f,57.15f,69.22f,81.28f,93.34f};
 
-        // ---- Channel rows (sliders, LEDs, outputs) ----
-        // CH1: y=87  CH2: y=120  CH3: y=153  CH4: y=186
-        const float chY[4] = {87, 120, 153, 186};
-        for (int ch = 0; ch < 4; ch++) {
-            addParam(createParamCentered<Trimpot>(
-                mm2px(Vec(18, chY[ch])), module, Skyline::SLIDER_PARAMS + ch));
+        // 8 CV outputs - top row y=33
+        for (int ch = 0; ch < 8; ch++) {
             addOutput(createOutputCentered<PJ301MPort>(
-                mm2px(Vec(107, chY[ch])), module, Skyline::CV_OUTPUTS + ch));
+                mm2px(Vec(cX[ch], 33)), module, Skyline::CV_OUTPUTS + ch));
+            // Channel LEDs y=40
+            addChild(createLightCentered<SmallLight<RedLight>>(
+                mm2px(Vec(cX[ch], 40)), module, Skyline::CHANNEL_LIGHTS + ch));
         }
-        addChild(createLightCentered<MediumLight<RedLight>>(    mm2px(Vec(122, chY[0]-10)), module, Skyline::CHANNEL_LIGHTS+0));
-        addChild(createLightCentered<MediumLight<BlueLight>>(   mm2px(Vec(122, chY[1]-10)), module, Skyline::CHANNEL_LIGHTS+1));
-        addChild(createLightCentered<MediumLight<GreenLight>>(  mm2px(Vec(122, chY[2]-10)), module, Skyline::CHANNEL_LIGHTS+2));
-        addChild(createLightCentered<MediumLight<YellowLight>>( mm2px(Vec(122, chY[3]-10)), module, Skyline::CHANNEL_LIGHTS+3));
 
-        // ---- CH5-8 compact ----
-        const float c58sliderX = 18;
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(c58sliderX, 215)), module, Skyline::SLIDER_PARAMS+4));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(c58sliderX, 222)), module, Skyline::SLIDER_PARAMS+5));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(c58sliderX, 229)), module, Skyline::SLIDER_PARAMS+6));
-        addParam(createParamCentered<Trimpot>(mm2px(Vec(c58sliderX, 236)), module, Skyline::SLIDER_PARAMS+7));
+        // CLK/CV input y=53
+        addInput(createInputCentered<PJ301MPort>(
+            mm2px(Vec(7.94f, 53)), module, Skyline::CLOCK_INPUT));
 
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(34,  211)), module, Skyline::CV_OUTPUTS+4));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(58,  211)), module, Skyline::CV_OUTPUTS+5));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(34,  233)), module, Skyline::CV_OUTPUTS+6));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(58,  233)), module, Skyline::CV_OUTPUTS+7));
+        // RST/HOLD input y=68
+        addInput(createInputCentered<PJ301MPort>(
+            mm2px(Vec(7.94f, 68)), module, Skyline::RESET_INPUT));
 
-        addChild(createLightCentered<SmallLight<RedLight>>(    mm2px(Vec(44, 208)), module, Skyline::CHANNEL_LIGHTS+4));
-        addChild(createLightCentered<SmallLight<GreenLight>>(  mm2px(Vec(68, 208)), module, Skyline::CHANNEL_LIGHTS+5));
-        addChild(createLightCentered<SmallLight<BlueLight>>(   mm2px(Vec(44, 230)), module, Skyline::CHANNEL_LIGHTS+6));
-        addChild(createLightCentered<SmallLight<YellowLight>>( mm2px(Vec(68, 230)), module, Skyline::CHANNEL_LIGHTS+7));
+        // Knobs: OFFSET, ATTEN, DIVIDE  y=57
+        addParam(createParamCentered<RoundBlackKnob>(
+            mm2px(Vec(33.34f, 57)), module, Skyline::OFFSET_PARAM));
+        addParam(createParamCentered<RoundBlackKnob>(
+            mm2px(Vec(46.99f, 57)), module, Skyline::ATTENUATE_PARAM));
+        addParam(createParamCentered<RoundBlackKnob>(
+            mm2px(Vec(60.64f, 57)), module, Skyline::DIVIDE_PARAM));
 
-        // ---- Mode buttons ----
+        // Mode buttons row 1: MUTE, LENGTH, SHIFT  y=52
         addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedLight>>>(
-            mm2px(Vec(18,  264)), module, Skyline::MUTE_PARAM,   Skyline::MUTE_LIGHT));
+            mm2px(Vec(73.03f, 52)), module, Skyline::MUTE_PARAM,   Skyline::MUTE_LIGHT));
         addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<WhiteLight>>>(
-            mm2px(Vec(35,  264)), module, Skyline::LENGTH_PARAM, Skyline::LENGTH_LIGHT));
+            mm2px(Vec(82.87f, 52)), module, Skyline::LENGTH_PARAM, Skyline::LENGTH_LIGHT));
         addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<WhiteLight>>>(
-            mm2px(Vec(65,  264)), module, Skyline::SHIFT_PARAM,  Skyline::SHIFT_LIGHT));
-        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<GreenLight>>>(
-            mm2px(Vec(91,  264)), module, Skyline::SAVE_PARAM,   Skyline::SAVE_LIGHT));
-        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<GreenLight>>>(
-            mm2px(Vec(111, 264)), module, Skyline::RECALL_PARAM, Skyline::RECALL_LIGHT));
+            mm2px(Vec(92.71f, 52)), module, Skyline::SHIFT_PARAM,  Skyline::SHIFT_LIGHT));
 
-        // ---- 16 Step buttons, 2 rows of 8 ----
-        // x positions: 16, 30, 44, 58, 72, 86, 100, 114
-        const float sX[8] = {16, 30, 44, 58, 72, 86, 100, 114};
+        // Mode buttons row 2: SCALE, SAVE, RECALL  y=65
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<WhiteLight>>>(
+            mm2px(Vec(73.03f, 65)), module, Skyline::SCALE_PARAM,  Skyline::SCALE_LIGHT));
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<GreenLight>>>(
+            mm2px(Vec(82.87f, 65)), module, Skyline::SAVE_PARAM,   Skyline::SAVE_LIGHT));
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<GreenLight>>>(
+            mm2px(Vec(92.71f, 65)), module, Skyline::RECALL_PARAM, Skyline::RECALL_LIGHT));
+
+        // 8 sliders (as Trimpots) - y=97.5
+        for (int ch = 0; ch < 8; ch++) {
+            addParam(createParamCentered<Trimpot>(
+                mm2px(Vec(cX[ch], 97.5f)), module, Skyline::SLIDER_PARAMS + ch));
+        }
+
+        // Step buttons row 1 y=131, row 2 y=151
         for (int i = 0; i < 8; i++) {
             addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<YellowLight>>>(
-                mm2px(Vec(sX[i], 289)), module,
-                Skyline::STEP_PARAMS + i, Skyline::STEP_LIGHTS + i));
+                mm2px(Vec(cX[i], 131)), module,
+                Skyline::STEP_PARAMS + i,   Skyline::STEP_LIGHTS + i));
             addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<YellowLight>>>(
-                mm2px(Vec(sX[i], 303)), module,
+                mm2px(Vec(cX[i], 151)), module,
                 Skyline::STEP_PARAMS + 8+i, Skyline::STEP_LIGHTS + 8+i));
         }
     }
 };
 
 Model* modelSkyline = createModel<Skyline, SkylineWidget>("Skyline");
+
+}
+
+}
