@@ -466,7 +466,7 @@ struct Skyline : Module {
         if (j) for(int ch=0;ch<8;ch++) scaleIndex[ch]=(int)json_integer_value(json_array_get(j,ch));
         j = json_object_get(root, "chanMuted");
         if (j) for(int ch=0;ch<8;ch++) chanMuted[ch]=json_boolean_value(json_array_get(j,ch));
-    }
+    }  // end dataFromJson
 };  // end Skyline struct
 
 struct SkylineWidget : ModuleWidget {
@@ -476,56 +476,58 @@ struct SkylineWidget : ModuleWidget {
 
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, box.size.y - RACK_GRID_WIDTH)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, box.size.y - RACK_GRID_WIDTH)));
+        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        // x positions for all 8 channels - match SVG exactly
-        const float cX[8] = {8.89f, 20.96f, 33.02f, 45.09f, 57.15f, 69.22f, 81.28f, 93.34f};
+        // x positions derived from SVG px / 2.953
+        const float cX[8] = {8.91f, 20.96f, 33.02f, 45.07f, 57.16f, 69.22f, 81.27f, 93.33f};
 
-        // 8 CV outputs y=33, channel LEDs y=40
+        // 8 CV outputs y=23.7, channel LEDs y=29.46
         for (int ch = 0; ch < 8; ch++) {
             addOutput(createOutputCentered<PJ301MPort>(
-                mm2px(Vec(cX[ch], 33.f)), module, Skyline::CV_OUTPUTS + ch));
+                mm2px(Vec(cX[ch], 23.7f)), module, Skyline::CV_OUTPUTS + ch));
             addChild(createLightCentered<SmallLight<RedLight>>(
-                mm2px(Vec(cX[ch], 40.f)), module, Skyline::CHANNEL_LIGHTS + ch));
+                mm2px(Vec(cX[ch], 29.46f)), module, Skyline::CHANNEL_LIGHTS + ch));
         }
 
-        // CLK/CV y=53, RST/HLD y=68
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(7.94f, 53.f)), module, Skyline::CLOCK_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(7.94f, 68.f)), module, Skyline::RESET_INPUT));
+        // CLK/CV y=40.3, RST/HLD y=51.47
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(7.93f, 40.3f)), module, Skyline::CLOCK_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(7.93f, 51.47f)), module, Skyline::RESET_INPUT));
 
-        // Knobs y=57
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(33.34f, 57.f)), module, Skyline::OFFSET_PARAM));
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(46.99f, 57.f)), module, Skyline::ATTENUATE_PARAM));
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.64f, 57.f)), module, Skyline::DIVIDE_PARAM));
+        // Knobs: OFFSET x=33.32, ATTEN x=46.97, DIVIDE x=60.62  y=43.35
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(33.32f, 43.35f)), module, Skyline::OFFSET_PARAM));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(46.97f, 43.35f)), module, Skyline::ATTENUATE_PARAM));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(60.62f, 43.35f)), module, Skyline::DIVIDE_PARAM));
 
-        // Mode buttons row 1 y=52, row 2 y=65
+        // Mode buttons row 1 y=37.25: MUTE x=72.98, LENGTH x=83.98, SHIFT x=94.99
         addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedLight>>>(
-            mm2px(Vec(73.03f, 52.f)), module, Skyline::MUTE_PARAM,   Skyline::MUTE_LIGHT));
+            mm2px(Vec(72.98f, 37.25f)), module, Skyline::MUTE_PARAM,   Skyline::MUTE_LIGHT));
         addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<WhiteLight>>>(
-            mm2px(Vec(82.87f, 52.f)), module, Skyline::LENGTH_PARAM, Skyline::LENGTH_LIGHT));
+            mm2px(Vec(83.98f, 37.25f)), module, Skyline::LENGTH_PARAM, Skyline::LENGTH_LIGHT));
         addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<WhiteLight>>>(
-            mm2px(Vec(92.71f, 52.f)), module, Skyline::SHIFT_PARAM,  Skyline::SHIFT_LIGHT));
-        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<WhiteLight>>>(
-            mm2px(Vec(73.03f, 65.f)), module, Skyline::SCALE_PARAM,  Skyline::SCALE_LIGHT));
-        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<GreenLight>>>(
-            mm2px(Vec(82.87f, 65.f)), module, Skyline::SAVE_PARAM,   Skyline::SAVE_LIGHT));
-        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<GreenLight>>>(
-            mm2px(Vec(92.71f, 65.f)), module, Skyline::RECALL_PARAM, Skyline::RECALL_LIGHT));
+            mm2px(Vec(94.99f, 37.25f)), module, Skyline::SHIFT_PARAM,  Skyline::SHIFT_LIGHT));
 
-        // 8 sliders y=97.5 (handle centre)
+        // Mode buttons row 2 y=49.1: SCALE x=72.98, SAVE x=83.98, RECALL x=94.99
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<WhiteLight>>>(
+            mm2px(Vec(72.98f, 49.1f)), module, Skyline::SCALE_PARAM,  Skyline::SCALE_LIGHT));
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<GreenLight>>>(
+            mm2px(Vec(83.98f, 49.1f)), module, Skyline::SAVE_PARAM,   Skyline::SAVE_LIGHT));
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<GreenLight>>>(
+            mm2px(Vec(94.99f, 49.1f)), module, Skyline::RECALL_PARAM, Skyline::RECALL_LIGHT));
+
+        // 8 sliders y=71.11
         for (int ch = 0; ch < 8; ch++) {
             addParam(createParamCentered<Trimpot>(
-                mm2px(Vec(cX[ch], 97.5f)), module, Skyline::SLIDER_PARAMS + ch));
+                mm2px(Vec(cX[ch], 71.11f)), module, Skyline::SLIDER_PARAMS + ch));
         }
 
-        // Step buttons row 1 y=131, row 2 y=151
+        // Step buttons row 1 y=94.14, row 2 y=108.7
         for (int i = 0; i < 8; i++) {
             addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<YellowLight>>>(
-                mm2px(Vec(cX[i], 131.f)), module,
+                mm2px(Vec(cX[i], 94.14f)), module,
                 Skyline::STEP_PARAMS + i,   Skyline::STEP_LIGHTS + i));
             addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<YellowLight>>>(
-                mm2px(Vec(cX[i], 151.f)), module,
+                mm2px(Vec(cX[i], 108.7f)), module,
                 Skyline::STEP_PARAMS + 8+i, Skyline::STEP_LIGHTS + 8+i));
         }
     }
