@@ -216,30 +216,13 @@ struct Skyline : Module {
 
         // ---- Mode button logic ----
         // Manual: buttons are momentary, modes toggle
-        if (muteTrig.process(params[MUTE_PARAM].getValue())) {
-            muteMode   = !muteMode;
-            lengthMode = shiftMode = saveMode = recallMode = false;
-        }
-        if (lengthTrig.process(params[LENGTH_PARAM].getValue())) {
-            lengthMode = !lengthMode;
-            muteMode   = shiftMode = saveMode = recallMode = false;
-        }
-        if (shiftTrig.process(params[SHIFT_PARAM].getValue())) {
-            shiftMode  = !shiftMode;
-            muteMode   = lengthMode = scaleMode = saveMode = recallMode = false;
-        }
-        if (scaleTrig.process(params[SCALE_PARAM].getValue())) {
-            scaleMode  = !scaleMode;
-            muteMode   = lengthMode = shiftMode = saveMode = recallMode = false;
-        }
-        if (saveTrig.process(params[SAVE_PARAM].getValue())) {
-            saveMode   = !saveMode;
-            muteMode   = lengthMode = shiftMode = recallMode = false;
-        }
-        if (recallTrig.process(params[RECALL_PARAM].getValue())) {
-            recallMode = !recallMode;
-            muteMode   = lengthMode = shiftMode = saveMode = false;
-        }
+        // VCVLightLatch is self-latching - read param values directly
+        muteMode   = params[MUTE_PARAM].getValue()   > 0.5f;
+        lengthMode = params[LENGTH_PARAM].getValue()  > 0.5f;
+        shiftMode  = params[SHIFT_PARAM].getValue()   > 0.5f;
+        scaleMode  = params[SCALE_PARAM].getValue()   > 0.5f;
+        saveMode   = params[SAVE_PARAM].getValue()    > 0.5f;
+        recallMode = params[RECALL_PARAM].getValue()  > 0.5f;
 
         // ---- Step button logic (manual accurate) ----
         for (int i = 0; i < 16; i++) {
@@ -402,12 +385,10 @@ struct Skyline : Module {
         }
 
         // ---- Mode lights ----
-        lights[MUTE_LIGHT].setBrightness(muteMode ? 1.f : 0.f);
-        lights[LENGTH_LIGHT].setBrightness(lengthMode ? 1.f : 0.f);
-        lights[SHIFT_LIGHT].setBrightness(shiftMode ? 1.f : 0.f);
-        lights[SCALE_LIGHT].setBrightness(scaleMode ? 1.f : 0.f);
-        lights[SAVE_LIGHT].setBrightness(saveMode ? 1.f : 0.f);
-        lights[RECALL_LIGHT].setBrightness(recallMode ? 1.f : 0.f);
+        // VCVLightLatch drives its own LED - no manual update needed
+        // Channel lights show which channel is selected
+        for (int ch = 0; ch < 8; ch++)
+            lights[CHANNEL_LIGHTS + ch].setBrightness(ch == selectedChan ? 1.f : 0.15f);
     }
 
     // ---- Patch persistence ----
