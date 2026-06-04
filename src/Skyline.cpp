@@ -339,10 +339,8 @@ struct Skyline : Module {
             for (int ch = 0; ch < 8; ch++) {
                 if (frozen[ch]) continue;
                 advanceChannel(ch);
-                // Live recording: record slider to current step on clock tick
-                if (!muteMode && !lengthMode && !shiftMode && !saveMode && !recallMode) {
-                    stepCV[ch][seqPos[ch]] = params[SLIDER_PARAMS + ch].getValue();
-                }
+                // Live recording disabled - use step-hold to record values
+                // (enabling live recording overwrites all steps with same value)
             }
         }
 
@@ -491,6 +489,85 @@ struct Skyline : Module {
 
 };  // end Skyline struct
 
+
+// ============================================================
+// Custom slim vertical fader - click/drag up=max down=min
+// ============================================================
+struct SlimFader : app::ParamWidget {
+    float trackW  = 6.f;
+    float trackH  = 60.f;
+    float handleW = 14.f;
+    float handleH = 8.f;
+    bool  dragging = false;
+    float dragY    = 0.f;
+    float dragVal  = 0.f;
+
+    SlimFader() {
+        box.size = Vec(handleW, trackH + handleH);
+    }
+
+    void drawLayer(const DrawArgs& args, int layer) override {
+        if (layer != 1) return;
+        float val = getParamQuantity() ? getParamQuantity()->getScaledValue() : 0.f;
+        float handleY = (1.f - val) * trackH;
+
+        // Track background
+        float tx = (box.size.x - trackW) / 2.f;
+        nvgBeginPath(args.vg);
+        nvgRoundedRect(args.vg, tx, handleH/2.f, trackW, trackH, 3.f);
+        nvgFillColor(args.vg, nvgRGB(0xc0, 0xbd, 0xb6));
+        nvgFill(args.vg);
+        nvgStrokeColor(args.vg, nvgRGB(0xaa, 0xaa, 0xaa));
+        nvgStrokeWidth(args.vg, 0.5f);
+        nvgStroke(args.vg);
+
+        // Track fill (below handle)
+        nvgBeginPath(args.vg);
+        nvgRoundedRect(args.vg, tx, handleH/2.f + handleY, trackW, trackH - handleY, 3.f);
+        nvgFillColor(args.vg, nvgRGB(0x99, 0x20, 0x20));
+        nvgFill(args.vg);
+
+        // Handle
+        float hx = (box.size.x - handleW) / 2.f;
+        nvgBeginPath(args.vg);
+        nvgRoundedRect(args.vg, hx, handleY, handleW, handleH, 2.f);
+        nvgFillColor(args.vg, nvgRGB(0x33, 0x33, 0x33));
+        nvgFill(args.vg);
+        // Handle centre line
+        nvgBeginPath(args.vg);
+        nvgMoveTo(args.vg, hx + 2.f, handleY + handleH/2.f);
+        nvgLineTo(args.vg, hx + handleW - 2.f, handleY + handleH/2.f);
+        nvgStrokeColor(args.vg, nvgRGB(0x88, 0x88, 0x88));
+        nvgStrokeWidth(args.vg, 1.f);
+        nvgStroke(args.vg);
+    }
+
+    void onButton(const ButtonEvent& e) override {
+        if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
+            dragging = true;
+            dragY    = e.pos.y;
+            dragVal  = getParamQuantity() ? getParamQuantity()->getScaledValue() : 0.f;
+            e.consume(this);
+        }
+        if (e.action == GLFW_RELEASE) {
+            dragging = false;
+        }
+        ParamWidget::onButton(e);
+    }
+
+    void onDragMove(const DragMoveEvent& e) override {
+        if (!dragging || !getParamQuantity()) return;
+        float delta = -e.mouseDelta.y / trackH;
+        float newVal = clamp(dragVal + delta, 0.f, 1.f);
+        dragVal = newVal;
+        getParamQuantity()->setScaledValue(newVal);
+    }
+
+    void onDoubleClick(const DoubleClickEvent& e) override {
+        if (getParamQuantity()) getParamQuantity()->reset();
+    }
+};
+
 struct SkylineWidget : ModuleWidget {
     SkylineWidget(Skyline* module) {
         setModule(module);
@@ -537,10 +614,11 @@ struct SkylineWidget : ModuleWidget {
         addParam(createParamCentered<VCVButton>(
             mm2px(Vec(96.17f, 59.94f)), module, Skyline::RECALL_PARAM));
 
-        // 8 sliders as small knobs (VCV limitation - no slim fader exists)
+        // 8 custom slim vertical faders
         for (int ch = 0; ch < 8; ch++) {
-            addParam(createParamCentered<RoundSmallBlackKnob>(
-                mm2px(Vec(cX[ch], 86.01f)), module, Skyline::SLIDER_PARAMS + ch));
+            auto* fader = createParam<SlimFader>(
+                mm2px(Vec(cX[ch] - 2.36f, 70.0f)), module, Skyline::SLIDER_PARAMS + ch);
+            addParam(fader);
         }
 
         // Step buttons row 1 y=109.04, row 2 y=121.91
