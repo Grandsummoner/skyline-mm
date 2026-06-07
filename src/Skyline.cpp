@@ -32,8 +32,8 @@ static const float SCALES[16][12] = {
     {0,1,4,5,7,8,11,0,1,4,5,7},
     // Arabian
     {0,2,4,5,6,8,10,0,2,4,5,6},
-    // Japanese
-    {0,2,4,7,9,0,2,4,7,9,0,2},
+    // Japanese (In scale: root, min2, perf4, perf5, min7)
+    {0,1,5,7,10,0,1,5,7,10,0,1},
     // Chromatic
     {0,1,2,3,4,5,6,7,8,9,10,11},
 };
@@ -252,18 +252,12 @@ struct Skyline : Module {
                     }
                 }
                 else if (lengthMode) {
-                    // Manual p.11: LENGTH + channel (1-8) selects channel
-                    //              LENGTH + step (1-16) sets length
-                    if (i < 8) {
-                        selectedChan = i;
-                    } else {
-                        // step 8-15 = length 9-16 BUT manual says steps 1-8 select channel
-                        // and then any step 1-16 sets length for that channel
-                        // We handle both: steps 1-8 select channel, steps 9-16 also set length
-                        seqLength[selectedChan] = i + 1;
-                        if (seqPos[selectedChan] >= seqLength[selectedChan])
-                            seqPos[selectedChan] = 0;
-                    }
+                    // Manual p.11: LENGTH + any step sets length for selected channel
+                    // Steps 1-8 also double as channel select
+                    if (i < 8) selectedChan = i;
+                    seqLength[selectedChan] = i + 1;
+                    if (seqPos[selectedChan] >= seqLength[selectedChan])
+                        seqPos[selectedChan] = 0;
                 }
                 else if (shiftMode) {
                     if (i < 8) {
@@ -442,6 +436,11 @@ struct Skyline : Module {
             json_array_append_new(frz, json_boolean(frozen[ch]));
         json_object_set_new(root, "frozen", frz);
 
+        json_t* pdirs = json_array();
+        for (int ch = 0; ch < 8; ch++)
+            json_array_append_new(pdirs, json_integer(pendDir[ch]));
+        json_object_set_new(root, "pendDir", pdirs);
+
         json_object_set_new(root, "selectedChan", json_integer(selectedChan));
         return root;
     }
@@ -458,6 +457,12 @@ struct Skyline : Module {
         if (j) for(int ch=0;ch<8;ch++) scaleIndex[ch]=(int)json_integer_value(json_array_get(j,ch));
         j = json_object_get(root, "chanMuted");
         if (j) for(int ch=0;ch<8;ch++) chanMuted[ch]=json_boolean_value(json_array_get(j,ch));
+        j = json_object_get(root, "stepMuted");
+        if (j) { int idx=0; for(int ch=0;ch<8;ch++) for(int s=0;s<16;s++) stepMuted[ch][s]=json_boolean_value(json_array_get(j,idx++)); }
+        j = json_object_get(root, "frozen");
+        if (j) for(int ch=0;ch<8;ch++) frozen[ch]=json_boolean_value(json_array_get(j,ch));
+        j = json_object_get(root, "pendDir");
+        if (j) for(int ch=0;ch<8;ch++) pendDir[ch]=(int)json_integer_value(json_array_get(j,ch));
     }  // end dataFromJson
     void onRandomize(const RandomizeEvent& e) override {
         // Only randomize CV step values - not mode/button states
@@ -578,56 +583,56 @@ struct SkylineWidget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2*RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        const float cX[8] = {5.42f,18.29f,31.49f,44.36f,57.23f,70.1f,83.31f,96.17f};
+        const float cX[8] = {3.71f,16.67f,29.63f,42.59f,55.56f,68.52f,81.48f,94.44f};
 
-        // 8 CV outputs y=26.08, LEDs y=33.86
+        // 8 CV outputs y=68px→22.7mm, LEDs y=93px→31.0mm
         for (int ch = 0; ch < 8; ch++) {
             addOutput(createOutputCentered<PJ301MPort>(
-                mm2px(Vec(cX[ch], 26.08f)), module, Skyline::CV_OUTPUTS + ch));
+                mm2px(Vec(cX[ch], 22.7f)), module, Skyline::CV_OUTPUTS + ch));
             addChild(createLightCentered<SmallLight<RedLight>>(
-                mm2px(Vec(cX[ch], 33.86f)), module, Skyline::CHANNEL_LIGHTS + ch));
+                mm2px(Vec(cX[ch], 31.0f)), module, Skyline::CHANNEL_LIGHTS + ch));
         }
 
-        // CLK/CV y=48.09, RST/HLD y=61.97
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(7.79f, 48.09f)), module, Skyline::CLOCK_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(7.79f, 61.97f)), module, Skyline::RESET_INPUT));
-        addParam(createParamCentered<CKSSThree>(mm2px(Vec(16.5f, 53.84f)), module, Skyline::CLK_SWITCH_PARAM));
+        // CLK/CV y=138px→46.0mm, RST/HLD y=177px→59.0mm
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(7.33f, 46.0f)), module, Skyline::CLOCK_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(7.33f, 59.0f)), module, Skyline::RESET_INPUT));
+        addParam(createParamCentered<CKSSThree>(mm2px(Vec(17.3f, 51.7f)), module, Skyline::CLK_SWITCH_PARAM));
 
-        // Knobs y=53.84
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(33.19f, 53.84f)), module, Skyline::OFFSET_PARAM));
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(50.12f, 53.84f)), module, Skyline::ATTENUATE_PARAM));
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(67.05f, 53.84f)), module, Skyline::DIVIDE_PARAM));
+        // Knobs y=158px→52.7mm
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(30.3f, 52.7f)), module, Skyline::OFFSET_PARAM));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(50.0f, 52.7f)), module, Skyline::ATTENUATE_PARAM));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(66.7f, 52.7f)), module, Skyline::DIVIDE_PARAM));
 
-        // Mode buttons row 1 y=46.05
+        // Mode buttons row 1 y=138px→46.0mm
         addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedLight>>>(
-            mm2px(Vec(77.21f, 46.05f)), module, Skyline::MUTE_PARAM,   Skyline::MUTE_LIGHT));
+            mm2px(Vec(79.0f, 46.0f)), module, Skyline::MUTE_PARAM,   Skyline::MUTE_LIGHT));
         addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<YellowLight>>>(
-            mm2px(Vec(87.03f, 46.05f)), module, Skyline::LENGTH_PARAM, Skyline::LENGTH_LIGHT));
+            mm2px(Vec(87.0f, 46.0f)), module, Skyline::LENGTH_PARAM, Skyline::LENGTH_LIGHT));
         addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<YellowLight>>>(
-            mm2px(Vec(96.17f, 46.05f)), module, Skyline::SHIFT_PARAM,  Skyline::SHIFT_LIGHT));
+            mm2px(Vec(94.7f, 46.0f)), module, Skyline::SHIFT_PARAM,  Skyline::SHIFT_LIGHT));
 
-        // Mode buttons row 2 y=59.94
+        // Mode buttons row 2 y=175px→58.3mm
         addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<YellowLight>>>(
-            mm2px(Vec(77.21f, 59.94f)), module, Skyline::SCALE_PARAM,  Skyline::SCALE_LIGHT));
+            mm2px(Vec(79.0f, 58.3f)), module, Skyline::SCALE_PARAM,  Skyline::SCALE_LIGHT));
         addParam(createParamCentered<VCVButton>(
-            mm2px(Vec(87.03f, 59.94f)), module, Skyline::SAVE_PARAM));
+            mm2px(Vec(87.0f, 58.3f)), module, Skyline::SAVE_PARAM));
         addParam(createParamCentered<VCVButton>(
-            mm2px(Vec(96.17f, 59.94f)), module, Skyline::RECALL_PARAM));
+            mm2px(Vec(94.7f, 58.3f)), module, Skyline::RECALL_PARAM));
 
-        // 8 custom slim vertical faders
+        // 8 custom slim vertical faders y=205px→68.3mm
         for (int ch = 0; ch < 8; ch++) {
             auto* fader = createParam<SlimFader>(
-                mm2px(Vec(cX[ch] - 2.36f, 70.0f)), module, Skyline::SLIDER_PARAMS + ch);
+                mm2px(Vec(cX[ch] - 2.36f, 68.3f)), module, Skyline::SLIDER_PARAMS + ch);
             addParam(fader);
         }
 
-        // Step buttons row 1 y=109.04, row 2 y=121.91
+        // Step buttons row 1 y=315px→105.0mm, row 2 y=349px→116.3mm
         for (int i = 0; i < 8; i++) {
             addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<YellowLight>>>(
-                mm2px(Vec(cX[i], 109.04f)), module,
+                mm2px(Vec(cX[i], 105.0f)), module,
                 Skyline::STEP_PARAMS + i,   Skyline::STEP_LIGHTS + i));
             addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<YellowLight>>>(
-                mm2px(Vec(cX[i], 121.91f)), module,
+                mm2px(Vec(cX[i], 116.3f)), module,
                 Skyline::STEP_PARAMS + 8+i, Skyline::STEP_LIGHTS + 8+i));
         }
 
@@ -654,41 +659,41 @@ struct SkylineWidget : ModuleWidget {
         };
 
         // Title
-        addPL(50.8f,  5.0f,  "VOLTAGE BLOCK", 14.f, nvgRGB(0x11,0x11,0x11));
-        addPL(50.8f, 10.0f,  "8 CHANNEL CV SEQUENCER", 8.f, nvgRGB(0x99,0x99,0x99));
+        addPL(50.0f,  5.0f,  "SKYLINE", 13.f, nvgRGB(0x11,0x11,0x11));
+        addPL(50.0f,  9.5f,  "8 CHANNEL CV SEQUENCER", 7.5f, nvgRGB(0x99,0x99,0x99));
 
-        // Channel numbers above jacks
-        addPL(5.42f,  19.0f, "1", 10.f);  addPL(18.29f, 19.0f, "2", 10.f);
-        addPL(31.49f, 19.0f, "3", 10.f);  addPL(44.36f, 19.0f, "4", 10.f);
-        addPL(57.23f, 19.0f, "5", 10.f);  addPL(70.1f,  19.0f, "6", 10.f);
-        addPL(83.31f, 19.0f, "7", 10.f);  addPL(96.17f, 19.0f, "8", 10.f);
+        // Channel numbers above jacks  y=40px→13.3mm
+        addPL( 3.71f, 13.3f, "1", 9.f);  addPL(16.67f, 13.3f, "2", 9.f);
+        addPL(29.63f, 13.3f, "3", 9.f);  addPL(42.59f, 13.3f, "4", 9.f);
+        addPL(55.56f, 13.3f, "5", 9.f);  addPL(68.52f, 13.3f, "6", 9.f);
+        addPL(81.48f, 13.3f, "7", 9.f);  addPL(94.44f, 13.3f, "8", 9.f);
 
-        // Left column
-        addPL(7.79f,  41.5f, "CLK/CV",  9.f);
-        addPL(7.79f,  66.0f, "RST/HLD", 9.f);
+        // Left column labels  y=122px→40.7mm, y=161px→53.7mm
+        addPL(7.33f, 40.7f, "CLK/CV",  8.f);
+        addPL(7.33f, 53.7f, "RST/HLD", 8.f);
 
-        // Knob labels above
-        addPL(33.19f, 44.0f, "OFFSET", 9.f);
-        addPL(50.12f, 44.0f, "ATTEN",  9.f);
-        addPL(67.05f, 44.0f, "DIVIDE", 9.f);
+        // Knob labels above  y=122px→40.7mm
+        addPL(30.3f, 40.7f, "OFFSET", 8.f);
+        addPL(50.0f, 40.7f, "ATTEN",  8.f);
+        addPL(66.7f, 40.7f, "DIVIDE", 8.f);
 
-        // Mode button labels below
-        addPL(77.21f, 57.0f, "MUTE",   9.f);
-        addPL(87.03f, 57.0f, "LEN",    9.f);
-        addPL(96.17f, 57.0f, "SHIFT",  9.f);
-        addPL(77.21f, 70.5f, "SCALE",  9.f);
-        addPL(87.03f, 70.5f, "SAVE",   9.f);
-        addPL(96.17f, 70.5f, "RECALL", 9.f);
+        // Mode button labels — above row 1 and between rows
+        addPL(79.0f, 40.7f, "MUTE",   8.f);
+        addPL(87.0f, 40.7f, "LEN",    8.f);
+        addPL(94.7f, 40.7f, "SHIFT",  8.f);
+        addPL(79.0f, 52.7f, "SCALE",  8.f);
+        addPL(87.0f, 52.7f, "SAVE",   8.f);
+        addPL(94.7f, 52.7f, "RECALL", 8.f);
 
-        // Bottom step labels
-        addPL(5.42f,  126.5f, "CLEAR",   8.f);
-        addPL(18.29f, 126.5f, "SMOOTH",  8.f);
-        addPL(31.49f, 126.5f, "RND",     8.f);
-        addPL(44.36f, 126.5f, "FREEZE",  8.f);
-        addPL(57.23f, 126.5f, "FWD",     8.f);
-        addPL(70.1f,  126.5f, "REV",     8.f);
-        addPL(83.31f, 126.5f, "PEND",    8.f);
-        addPL(96.17f, 126.5f, "RND SEQ", 8.f);
+        // Bottom step labels  y=368px→122.7mm
+        addPL( 3.71f, 122.7f, "CLEAR",   7.f);
+        addPL(16.67f, 122.7f, "SMOOTH",  7.f);
+        addPL(29.63f, 122.7f, "RND",     7.f);
+        addPL(42.59f, 122.7f, "FREEZE",  7.f);
+        addPL(55.56f, 122.7f, "FWD",     7.f);
+        addPL(68.52f, 122.7f, "REV",     7.f);
+        addPL(81.48f, 122.7f, "PEND",    7.f);
+        addPL(94.44f, 122.7f, "RND SEQ", 7.f);
 
     }
 };
