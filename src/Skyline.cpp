@@ -111,6 +111,13 @@ struct Skyline : Module {
     bool scaleMode  = false;
     bool saveMode   = false;
     bool recallMode = false;
+    // Previous-frame mode states — used to detect ON→OFF transitions
+    bool prevMuteMode   = false;
+    bool prevLengthMode = false;
+    bool prevShiftMode  = false;
+    bool prevScaleMode  = false;
+    bool prevSaveMode   = false;
+    bool prevRecallMode = false;
 
     // ---- Triggers ----
     dsp::SchmittTrigger clockTrig;
@@ -199,7 +206,6 @@ struct Skyline : Module {
         // ================================================================
         // 1. READ MODE BUTTONS
         // VCVLightLatch holds 1.0 when latched, 0.0 when not.
-        // We read param value directly — no edge detect needed for latches.
         // ================================================================
         muteMode   = params[MUTE_PARAM].getValue()   > 0.5f;
         lengthMode = params[LENGTH_PARAM].getValue()  > 0.5f;
@@ -208,8 +214,25 @@ struct Skyline : Module {
         saveMode   = params[SAVE_PARAM].getValue()    > 0.5f;
         recallMode = params[RECALL_PARAM].getValue()  > 0.5f;
 
-        // Mirror mode state to lights (VCVLightLatch drives its own LED,
-        // but also drive manually so the light is always in sync)
+        // Detect any mode turning OFF this frame → flush all step triggers
+        // so queued button edges don't fire into the wrong branch next frame.
+        bool anyModeReleased = (prevMuteMode   && !muteMode)   ||
+                               (prevLengthMode && !lengthMode) ||
+                               (prevShiftMode  && !shiftMode)  ||
+                               (prevScaleMode  && !scaleMode)  ||
+                               (prevSaveMode   && !saveMode)   ||
+                               (prevRecallMode && !recallMode);
+        if (anyModeReleased) {
+            for (int i = 0; i < 16; i++) stepTrig[i].reset();
+        }
+        prevMuteMode   = muteMode;
+        prevLengthMode = lengthMode;
+        prevShiftMode  = shiftMode;
+        prevScaleMode  = scaleMode;
+        prevSaveMode   = saveMode;
+        prevRecallMode = recallMode;
+
+        // Mode lights
         lights[MUTE_LIGHT].setBrightness(muteMode   ? 1.f : 0.f);
         lights[LENGTH_LIGHT].setBrightness(lengthMode ? 1.f : 0.f);
         lights[SHIFT_LIGHT].setBrightness(shiftMode  ? 1.f : 0.f);
@@ -246,12 +269,15 @@ struct Skyline : Module {
                 }
             }
             else if (lengthMode) {
-                // LENGTH + top-row button → select that channel
-                // LENGTH + any button → set length to (i+1) for selected channel
-                if (i < 8) selectedChan = i;
-                seqLength[selectedChan] = i + 1;
-                if (seqPos[selectedChan] >= seqLength[selectedChan])
-                    seqPos[selectedChan] = 0;
+                if (i < 8) {
+                    // Top-row (ch 1-8): select channel only — do NOT set length
+                    selectedChan = i;
+                } else {
+                    // Bottom-row (steps 9-16, i=8-15): set length for selected channel
+                    seqLength[selectedChan] = i + 1;   // i=8→length 9, i=15→length 16
+                    if (seqPos[selectedChan] >= seqLength[selectedChan])
+                        seqPos[selectedChan] = 0;
+                }
             }
             else if (shiftMode) {
                 if (i < 8) {
