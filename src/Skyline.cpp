@@ -604,29 +604,26 @@ struct EditRingLight : widget::Widget {
 };
 
 // ============================================================
-// ChannelButton — top-row button with double-click → editChan
+// ChannelStepButton — VCVLightButton that intercepts double-click
+// to toggle editChan without needing a separate overlay widget.
+// Single-click fires normally through stepTrig in process().
+// Double-click toggles editChan for this channel.
 // ============================================================
-struct ChannelButton : app::ParamWidget {
-    int chanIndex = 0;
+struct ChannelStepButton : VCVLightButton<MediumSimpleLight<RedLight>> {
+    int chanIndex = -1;
 
     void onDoubleClick(const DoubleClickEvent& e) override {
         if (!module) return;
         Skyline* m = dynamic_cast<Skyline*>(module);
         if (!m) return;
-        // Double-click: toggle editChan
         if (m->editChan == chanIndex) {
-            m->editChan = -1;   // exit edit mode
+            m->editChan = -1;
             m->editStep = -1;
         } else {
-            m->editChan = chanIndex;  // enter edit mode
-            m->editStep = -1;         // follow playhead initially
+            m->editChan = chanIndex;
+            m->editStep = -1;
         }
         e.consume(this);
-    }
-
-    void drawLayer(const DrawArgs& args, int layer) override {
-        // Let VCVLightButton handle its own drawing — we just intercept double-click
-        ParamWidget::drawLayer(args, layer);
     }
 };
 
@@ -693,30 +690,28 @@ struct SkylineWidget : ModuleWidget {
             addParam(createParam<SlimFader>(
                 mm2px(Vec(cX[ch]-2.37f,ySld)),module,Skyline::SLIDER_PARAMS+ch));
 
-        // ── Step buttons
-        // Top row (1-8): standard VCVLightButton for single-click select
-        //   PLUS invisible ChannelButton overlay to catch double-clicks
-        // Bottom row (9-16): standard step buttons with small red LED above
+        // ── Step buttons ─────────────────────────────────────
+        // Top row (1-8): ChannelStepButton — single-click selects channel,
+        //   double-click toggles editChan (yellow glow ring on channel LED)
+        // Bottom row (9-16): standard step buttons
         for(int i=0;i<8;i++){
-            // Tiny red LED above top-row button = playhead
-            addChild(createLightCentered<TinyLight<RedLight>>(
-                mm2px(Vec(cX[i],yS1-5.5f)),module,Skyline::STEP_LIGHTS+i));
-            // Top-row button LED = edit step indicator (BUTTON_LIGHTS)
-            addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<RedLight>>>(
-                mm2px(Vec(cX[i],yS1)),module,
-                Skyline::STEP_PARAMS+i, Skyline::BUTTON_LIGHTS+i));
-            // Invisible ChannelButton overlay — catches double-click for editChan
-            auto* cb = createParam<ChannelButton>(
-                mm2px(Vec(cX[i],yS1)).minus(Vec(9,9)), module, Skyline::STEP_PARAMS+i);
-            cb->box.size = Vec(18,18);
-            cb->chanIndex = i;
-            cb->hide();
-            addParam(cb);
+            // Small red LED above top-row button = playhead indicator
+            addChild(createLightCentered<SmallLight<RedLight>>(
+                mm2px(Vec(cX[i],yS1-6.5f)),module,Skyline::STEP_LIGHTS+i));
 
-            // Tiny red LED above bottom-row button = playhead
-            addChild(createLightCentered<TinyLight<RedLight>>(
-                mm2px(Vec(cX[i],yS2-5.5f)),module,Skyline::STEP_LIGHTS+8+i));
-            // Bottom-row button LED = edit step indicator (BUTTON_LIGHTS)
+            // Top-row: ChannelStepButton handles both single-click (stepTrig)
+            // and double-click (editChan toggle) — no overlay needed
+            auto* csb = createLightParamCentered<ChannelStepButton>(
+                mm2px(Vec(cX[i],yS1)), module,
+                Skyline::STEP_PARAMS+i, Skyline::BUTTON_LIGHTS+i);
+            csb->chanIndex = i;
+            addParam(csb);
+
+            // Small red LED above bottom-row button = playhead indicator
+            addChild(createLightCentered<SmallLight<RedLight>>(
+                mm2px(Vec(cX[i],yS2-6.5f)),module,Skyline::STEP_LIGHTS+8+i));
+
+            // Bottom-row: standard light button (step lock / combo functions)
             addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<RedLight>>>(
                 mm2px(Vec(cX[i],yS2)),module,
                 Skyline::STEP_PARAMS+8+i, Skyline::BUTTON_LIGHTS+8+i));
