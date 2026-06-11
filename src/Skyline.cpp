@@ -73,13 +73,14 @@ struct Skyline : Module {
     bool  frozen[8]         = {};
     int   selectedChan      = 0;
 
-    // editChan: which channel is in edit mode (-1 = none).
-    // Double-click a top-row channel button to enter/exit.
-    // While active, sliders continuously write to the current
-    // playing step of that channel. Bottom-row step buttons
-    // lock a specific step for that channel.
-    int   editChan          = -1;
-    int   editStep          = -1;  // -1 = follow playhead, 0-15 = locked step
+    // editChan: which channel is in edit mode. ALWAYS >= 0 — one channel
+    // is always selected. Default = 0 (channel 1). Cannot be cleared to -1.
+    // Switch by double-clicking a DIFFERENT channel button.
+    int   editChan          = 0;
+    // editStep: which step is selected for slider editing. ALWAYS >= 0
+    // within the active channel. Default = 0 (step 1).
+    // Single-click a step button to select it. Clicking same step = no change.
+    int   editStep          = 0;
 
     // Glow animation phase for edit ring
     float glowPhase         = 0.f;
@@ -183,9 +184,8 @@ struct Skyline : Module {
         bool anyActivated = (!prevMuteMode&&muteMode)||(!prevLengthMode&&lengthMode)||
                             (!prevShiftMode&&shiftMode)||(!prevScaleMode&&scaleMode)||
                             (!prevSaveMode&&saveMode)||(!prevRecallMode&&recallMode);
-        // Entering any mode clears editStep lock (but keeps editChan — user
-        // may want to return to editing after doing a combo)
-        if (anyActivated) editStep = -1;
+        // Entering a mode suspends step editing (editStep stays for return)
+        // editChan is NEVER cleared — always one channel is active
 
         // LENGTH snapshot
         if (!prevLengthMode && lengthMode)
@@ -194,11 +194,11 @@ struct Skyline : Module {
             for(int ch=0;ch<8;ch++) lengthSliderSnapshot[ch]=-1.f;
 
         // SCALE snapshot (re-snap on channel change too)
-        bool scaleChChanged = scaleMode && (selectedChan != prevSelectedChan);
+        bool scaleChChanged = scaleMode && (editChan != prevSelectedChan);
         if ((!prevScaleMode && scaleMode) || scaleChChanged)
-            scaleSliderSnapshot = params[SLIDER_PARAMS+selectedChan].getValue();
+            scaleSliderSnapshot = params[SLIDER_PARAMS+editChan].getValue();
         if (prevScaleMode && !scaleMode) scaleSliderSnapshot = -1.f;
-        prevSelectedChan = selectedChan;
+        prevSelectedChan = editChan;
 
         bool anyReleased = (prevMuteMode&&!muteMode)||(prevLengthMode&&!lengthMode)||
                            (prevShiftMode&&!shiftMode)||(prevScaleMode&&!scaleMode)||
@@ -217,6 +217,9 @@ struct Skyline : Module {
 
         bool noMode = !muteMode&&!lengthMode&&!shiftMode&&!scaleMode&&!saveMode&&!recallMode;
 
+        // selectedChan always mirrors editChan so display is consistent
+        selectedChan = editChan;
+
         // ============================================================
         // 2. STEP BUTTON COMBOS
         // ============================================================
@@ -232,71 +235,67 @@ struct Skyline : Module {
                 params[RECALL_PARAM].setValue(0.f);
             }
             else if (muteMode) {
-                if (i < 8) chanMuted[i] = !chanMuted[i];
-                else       stepMuted[selectedChan][i] = !stepMuted[selectedChan][i];
+                if (i < 8) {
+                    chanMuted[i] = !chanMuted[i];
+                    editChan     = i;
+                    selectedChan = i;
+                }
+                else stepMuted[editChan][i] = !stepMuted[editChan][i];
             }
             else if (lengthMode) {
-                if (i < 8) selectedChan = i;
+                // Top-row: switch the glowing channel (editChan follows)
+                if (i < 8) {
+                    selectedChan = i;
+                    editChan     = i;
+                }
             }
             else if (shiftMode) {
                 if (i < 8) {
                     selectedChan = i;
+                    editChan     = i;
                 } else {
                     switch (i) {
-                        case 8:  for(int s=0;s<16;s++) stepCV[selectedChan][s]=0.f; break;
-                        case 9:  stepSmooth[selectedChan][seqPos[selectedChan]]=
-                                     !stepSmooth[selectedChan][seqPos[selectedChan]]; break;
+                        case 8:  for(int s=0;s<16;s++) stepCV[editChan][s]=0.f; break;
+                        case 9:  stepSmooth[editChan][seqPos[editChan]]=
+                                     !stepSmooth[editChan][seqPos[editChan]]; break;
                         case 10: {
-                            for(int s=0;s<seqLength[selectedChan];s++)
-                                stepCV[selectedChan][s]=random::uniform()*5.f;
+                            for(int s=0;s<seqLength[editChan];s++)
+                                stepCV[editChan][s]=random::uniform()*5.f;
                             break;
                         }
-                        case 11: frozen[selectedChan]=!frozen[selectedChan]; break;
-                        case 12: direction[selectedChan]=0; break;
-                        case 13: direction[selectedChan]=1; break;
-                        case 14: direction[selectedChan]=2; break;
-                        case 15: direction[selectedChan]=3; break;
+                        case 11: frozen[editChan]=!frozen[editChan]; break;
+                        case 12: direction[editChan]=0; break;
+                        case 13: direction[editChan]=1; break;
+                        case 14: direction[editChan]=2; break;
+                        case 15: direction[editChan]=3; break;
                         default: break;
                     }
                 }
             }
             else if (scaleMode) {
-                if (i < 8) selectedChan = i;
-            }
-            else {
-                // Normal mode
-                // TOP ROW (i=0-7): single click = select channel.
-                //   Double-click is handled in the widget via onDoubleClick
-                //   on the channel button — it sets editChan directly.
-                //   Here single-click just updates selectedChan.
                 if (i < 8) {
                     selectedChan = i;
+                    editChan     = i;
                 }
-                // BOTTOM ROW (i=8-15): if editChan is active, lock/unlock
-                // a specific step (i-8 = steps 0-7, i=8-15 = steps 8-15)
-                // for that channel. If no editChan, does nothing in normal mode.
-                else if (editChan >= 0) {
-                    // Bottom row (i=8-15): lock/unlock step i for editChan
-                    if (editStep == i) editStep = -1;
-                    else               editStep = i;
+            }
+            else {
+                // Normal mode — step buttons select which step to edit
+                // editChan stays fixed (only changes via double-click)
+                // selectedChan always mirrors editChan for display consistency
+                if (i < 8) {
+                    editStep = i;       // top row = steps 0-7
+                } else {
+                    editStep = i;       // bottom row = steps 8-15
                 }
             }
         }
 
         // ============================================================
-        // 3. EDIT MODE — slider writes to editChan
-        //
-        // When editChan >= 0:
-        //   editStep == -1: slider writes to the CURRENT PLAYING step
-        //     (follows playhead — good for live pitch sculpting)
-        //   editStep >= 0:  slider writes to that locked step
-        //
-        // Single click top-row selects channel for viewing.
-        // Double-click top-row enters/exits edit mode for that channel.
+        // 3. EDIT MODE — slider of editChan writes to editStep
+        // editChan and editStep are always valid (>= 0).
         // ============================================================
-        if (noMode && editChan >= 0) {
-            int stp = (editStep >= 0) ? editStep : seqPos[editChan];
-            stepCV[editChan][stp] = params[SLIDER_PARAMS + editChan].getValue();
+        if (noMode) {
+            stepCV[editChan][editStep] = params[SLIDER_PARAMS + editChan].getValue();
         }
 
         // ============================================================
@@ -318,10 +317,10 @@ struct Skyline : Module {
         // 5. SCALE MODE — selected channel's slider sets scale (deadband)
         // ============================================================
         if (scaleMode) {
-            float sv   = params[SLIDER_PARAMS+selectedChan].getValue();
+            float sv   = params[SLIDER_PARAMS+editChan].getValue();
             float snap = scaleSliderSnapshot;
             if (snap < 0.f || std::abs(sv-snap) > SCALE_DEADBAND)
-                scaleIndex[selectedChan] = clamp((int)(sv/5.0f*15.5f),0,15);
+                scaleIndex[editChan] = clamp((int)(sv/5.0f*15.5f),0,15);
         }
 
         // ============================================================
@@ -404,10 +403,6 @@ struct Skyline : Module {
         //   (either locked step or current playhead if following)
         //   Off otherwise — buttons have no meaning outside edit mode
         // ============================================================
-        int activeEditStep = -1;
-        if (editChan >= 0)
-            activeEditStep = (editStep >= 0) ? editStep : seqPos[editChan];
-
         for(int i=0;i<16;i++){
             bool isCurrent = (i == seqPos[selectedChan]);
             bool isMuted   = stepMuted[selectedChan][i];
@@ -421,25 +416,29 @@ struct Skyline : Module {
             else                tiny = 0.10f;
             lights[STEP_LIGHTS + i].setBrightness(tiny);
 
-            // Button LED: lit only when this step is the active edit step
-            lights[BUTTON_LIGHTS + i].setBrightness(
-                (editChan >= 0 && i == activeEditStep) ? 1.0f : 0.0f);
+            // Button LED
+            float btnBright = 0.f;
+            if (lengthMode) {
+                // LENGTH: show step count for editChan (the glowing channel)
+                bool inEditLen = (i < seqLength[editChan]);
+                if      (i == seqLength[editChan] - 1) btnBright = 1.0f;
+                else if (inEditLen)                    btnBright = 0.4f;
+                else                                   btnBright = 0.0f;
+            } else {
+                // Normal: only the selected editStep is lit
+                btnBright = (i == editStep) ? 1.0f : 0.0f;
+            }
+            lights[BUTTON_LIGHTS + i].setBrightness(btnBright);
         }
 
         // ============================================================
-        // 10. EDIT RING LIGHTS — slow glow animation
+        // 10. EDIT RING LIGHTS — slow glow, always one channel active
         // ============================================================
-        if (editChan >= 0) {
-            glowPhase += args.sampleTime * 1.5f;   // ~1.5 Hz
-            if (glowPhase > 2.f*M_PI) glowPhase -= 2.f*M_PI;
-            float glow = 0.45f + 0.45f * std::sin(glowPhase);
-            for(int ch=0;ch<8;ch++)
-                lights[EDIT_RING_LIGHTS+ch].setBrightness(ch==editChan ? glow : 0.f);
-        } else {
-            for(int ch=0;ch<8;ch++)
-                lights[EDIT_RING_LIGHTS+ch].setBrightness(0.f);
-            glowPhase = 0.f;
-        }
+        glowPhase += args.sampleTime * 1.5f;
+        if (glowPhase > 2.f * M_PI) glowPhase -= 2.f * M_PI;
+        float glow = 0.45f + 0.45f * std::sin(glowPhase);
+        for (int ch = 0; ch < 8; ch++)
+            lights[EDIT_RING_LIGHTS + ch].setBrightness(ch == editChan ? glow : 0.f);
     }
 
     // ============================================================
@@ -518,7 +517,7 @@ struct Skyline : Module {
             glideCV[ch]=0.f;liveRecord[ch]=false;
         }
         selectedChan=0;prevSelectedChan=0;divCount=0;
-        editChan=-1;editStep=-1;glowPhase=0.f;
+        editChan=0; editStep=0; glowPhase=0.f;
         scaleSliderSnapshot=-1.f;
         for(int ch=0;ch<8;ch++) lengthSliderSnapshot[ch]=-1.f;
     }
@@ -604,25 +603,36 @@ struct EditRingLight : widget::Widget {
 };
 
 // ============================================================
-// ChannelStepButton — VCVLightButton that intercepts double-click
-// to toggle editChan without needing a separate overlay widget.
-// Single-click fires normally through stepTrig in process().
-// Double-click toggles editChan for this channel.
+// ChannelStepButton — subclasses VCVLightButton, intercepts
+// double-click to toggle editChan.
+// KEY: onDoubleClick only fires if onButton consumes the event.
+// We call the parent onButton first (so single-click still works
+// via stepTrig in process()), then consume to enable double-click.
 // ============================================================
 struct ChannelStepButton : VCVLightButton<MediumSimpleLight<RedLight>> {
     int chanIndex = -1;
+
+    void onButton(const ButtonEvent& e) override {
+        // Call parent so single-click param behaviour is preserved
+        VCVLightButton<MediumSimpleLight<RedLight>>::onButton(e);
+        // Must consume left-press to receive onDoubleClick
+        if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT)
+            e.consume(this);
+    }
 
     void onDoubleClick(const DoubleClickEvent& e) override {
         if (!module) return;
         Skyline* m = dynamic_cast<Skyline*>(module);
         if (!m) return;
-        if (m->editChan == chanIndex) {
-            m->editChan = -1;
-            m->editStep = -1;
-        } else {
+        // Only switch if this is a DIFFERENT channel from current.
+        // Double-clicking the currently glowing channel is ignored —
+        // there must always be exactly one channel in edit.
+        if (m->editChan != chanIndex) {
             m->editChan = chanIndex;
-            m->editStep = -1;
+            m->editStep = 0;    // reset to step 1 when entering new channel
+            m->selectedChan = chanIndex;
         }
+        // Same channel double-click: do nothing
         e.consume(this);
     }
 };
