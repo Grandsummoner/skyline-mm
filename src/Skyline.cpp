@@ -266,31 +266,30 @@ struct Skyline : Module {
             }
             else if (muteMode) {
                 if (i < 8) {
+                    // Toggle channel mute — do NOT change editChan
                     chanMuted[i] = !chanMuted[i];
-                    editChan     = i;
-                    selectedChan = i;
                 }
-                else stepMuted[editChan][i] = !stepMuted[editChan][i];
+                else {
+                    // Bottom-row: toggle step mute for editChan (steps 8-15)
+                    stepMuted[editChan][i] = !stepMuted[editChan][i];
+                }
             }
             else if (lengthMode) {
-                // Top-row: switch the glowing channel (editChan follows)
-                if (i < 8) {
-                    selectedChan = i;
-                    editChan     = i;
-                }
+                // Top-row in LENGTH mode: viewing only, no editChan change
+                // editChan is the channel whose length is being set
+                // Switch channels via double-click as usual
             }
             else if (shiftMode) {
-                if (i < 8) {
-                    selectedChan = i;
-                    editChan     = i;
-                } else {
+                // Top-row in SHIFT mode: no editChan change
+                // All shift operations apply to editChan
+                if (i >= 8) {
                     switch (i) {
                         case 8:  for(int s=0;s<16;s++) stepCV[editChan][s]=0.f; break;
                         case 9:  stepSmooth[editChan][seqPos[editChan]]=
                                      !stepSmooth[editChan][seqPos[editChan]]; break;
                         case 10: {
                             for(int s=0;s<seqLength[editChan];s++)
-                                stepCV[editChan][s]=random::uniform()*5.f;
+                                stepCV[editChan][s]=random::uniform()*4.f;
                             break;
                         }
                         case 11: frozen[editChan]=!frozen[editChan]; break;
@@ -303,10 +302,8 @@ struct Skyline : Module {
                 }
             }
             else if (scaleMode) {
-                if (i < 8) {
-                    selectedChan = i;
-                    editChan     = i;
-                }
+                // Top-row in SCALE mode: no editChan change
+                // Scale applies to editChan via slider
             }
             else {
                 // Normal mode — step buttons select which step to edit
