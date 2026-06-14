@@ -772,12 +772,12 @@ struct EditRingLight : widget::Widget {
 // We call the parent onButton first (so single-click still works
 // via stepTrig in process()), then consume to enable double-click.
 // ============================================================
-struct ChannelStepButton : VCVLightButton<MediumSimpleLight<RedLight>> {
+struct ChannelStepButton : VCVLightButton<MediumSimpleLight<RedGreenBlueLight>> {
     int chanIndex = -1;
 
     void onButton(const ButtonEvent& e) override {
         // Call parent so single-click param behaviour is preserved
-        VCVLightButton<MediumSimpleLight<RedLight>>::onButton(e);
+        VCVLightButton<MediumSimpleLight<RedGreenBlueLight>>::onButton(e);
         // Must consume left-press to receive onDoubleClick
         if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT)
             e.consume(this);
