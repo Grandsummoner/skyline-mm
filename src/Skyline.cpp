@@ -137,10 +137,10 @@ struct Skyline : Module {
     dsp::SchmittTrigger clockTrig, resetTrig, stepTrig[16];
     int   divCount  = 0;
     float glideCV[8]= {};
-    // Last played step position and hold window for live recording
-    int   lastSeqPos[8]   = {};
-    float stepHoldTimer   = 0.f;
-    static constexpr float STEP_HOLD_WINDOW = 0.08f; // 80ms hold window
+    float prevSlider[8]    = {0.f,0.f,0.f,0.f,0.f,0.f,0.f,0.f}; // slider delta tracking
+    int   lastSeqPos[8]    = {};       // step position captured before advance
+    float stepHoldTimer    = 0.f;      // hold window after clock edge
+    static constexpr float STEP_HOLD_WINDOW = 0.08f; // 80ms
 
     Skyline() {
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
@@ -246,9 +246,6 @@ struct Skyline : Module {
         saveMode   = params[SAVE_PARAM].getValue()    > 0.5f;
         recallMode = params[RECALL_PARAM].getValue()  > 0.5f;
 
-        bool anyActivated = (!prevMuteMode&&muteMode)||(!prevLengthMode&&lengthMode)||
-                            (!prevShiftMode&&shiftMode)||(!prevScaleMode&&scaleMode)||
-                            (!prevSaveMode&&saveMode)||(!prevRecallMode&&recallMode);
         // Entering a mode suspends step editing (editStep stays for return)
         // editChan is NEVER cleared — always one channel is active
 
