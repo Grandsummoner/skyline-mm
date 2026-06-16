@@ -137,7 +137,10 @@ struct Skyline : Module {
     dsp::SchmittTrigger clockTrig, resetTrig, stepTrig[16];
     int   divCount  = 0;
     float glideCV[8]= {};
-    float prevSlider[8] = {0.f,0.f,0.f,0.f,0.f,0.f,0.f,0.f}; // slider delta tracking
+    // Last played step position and hold window for live recording
+    int   lastSeqPos[8]   = {};
+    float stepHoldTimer   = 0.f;
+    static constexpr float STEP_HOLD_WINDOW = 0.08f; // 80ms hold window
 
     Skyline() {
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
@@ -366,19 +369,26 @@ struct Skyline : Module {
 
         // ============================================================
         // 3. EDIT MODE — slider writes to editChan's CV
-        // Always tracks slider position. Writes to current playing step
-        // (OG live record) unless editStepLocked, then writes to locked step.
-        // No forced prevSlider resets — continuous tracking.
+        // Uses lastSeqPos (step that just played) during hold window
+        // so the user can wiggle the slider right after a step fires
+        // and still hit that step accurately. After hold window expires,
+        // writes to current seqPos (the new step).
         // ============================================================
         if (noMode) {
             float sv = params[SLIDER_PARAMS + editChan].getValue();
             if (std::abs(sv - prevSlider[editChan]) > 0.0001f) {
-                int targetStep = editStepLocked ? editStep : seqPos[editChan];
+                int targetStep;
+                if (editStepLocked) {
+                    targetStep = editStep;
+                } else if (stepHoldTimer > 0.f) {
+                    targetStep = lastSeqPos[editChan]; // write to step that just played
+                } else {
+                    targetStep = seqPos[editChan];     // write to current step
+                }
                 stepCV[editChan][targetStep] = sv;
                 prevSlider[editChan] = sv;
             }
         } else {
-            // Update prevSlider while in mode so re-entry doesn't see stale delta
             for (int ch = 0; ch < 8; ch++)
                 prevSlider[ch] = params[SLIDER_PARAMS + ch].getValue();
         }
@@ -443,13 +453,14 @@ struct Skyline : Module {
                 if(frozen[ch]) continue;
                 if (noMode && liveRecord[ch])
                     stepCV[ch][seqPos[ch]]=params[SLIDER_PARAMS+ch].getValue();
+                lastSeqPos[ch] = seqPos[ch]; // capture BEFORE advance
                 advanceChannel(ch);
-                // When editChan advances to a new step, reset prevSlider
-                // so the first slider move on the new step is clean
                 if (ch == editChan && !editStepLocked)
                     editStep = seqPos[editChan];
             }
+            stepHoldTimer = STEP_HOLD_WINDOW; // start hold window
         }
+        if (stepHoldTimer > 0.f) stepHoldTimer -= args.sampleTime;
 
         // ============================================================
         // 8. OUTPUTS
@@ -459,11 +470,17 @@ struct Skyline : Module {
 
         for(int ch=0;ch<8;ch++){
             int pos=seqPos[ch];
-            float ledBright=(ch==selectedChan)?1.0f:0.15f;
-            if(chanMuted[ch]||stepMuted[ch][pos]) ledBright=0.0f;
-            lights[CHANNEL_LIGHTS+ch].setBrightness(ledBright);
+            bool muted = chanMuted[ch]||stepMuted[ch][pos];
+            bool frz   = frozen[ch];
+            float bright = (ch==editChan)?1.0f:0.3f;
+            if (muted)
+                setRGB(CHANNEL_LIGHTS+ch*3, 0.6f*bright, 0.f, 1.f*bright); // Purple
+            else if (frz)
+                setRGB(CHANNEL_LIGHTS+ch*3, bright, bright, bright);        // White
+            else
+                setRGB(CHANNEL_LIGHTS+ch*3, bright, 0.f, 0.f);             // Red
 
-            if(chanMuted[ch]||stepMuted[ch][pos]){
+            if(muted){
                 outputs[CV_OUTPUTS+ch].setVoltage(0.f);
                 continue;
             }
@@ -814,10 +831,7 @@ struct SkylineWidget : ModuleWidget {
         setModule(module);
         setPanel(createPanel(asset::plugin(pluginInstance,"res/Skyline.svg")));
 
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH,0)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH,0)));
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH,RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x-2*RACK_GRID_WIDTH,RACK_GRID_HEIGHT-RACK_GRID_WIDTH)));
+        // No screws — clean panel aesthetic
 
         const float cX[8]={7.00f,19.51f,32.03f,44.54f,57.06f,69.57f,82.09f,94.60f};
         const float xJack=7.00f,xSwitch=20.00f;
@@ -899,10 +913,13 @@ struct SkylineWidget : ModuleWidget {
             PanelLabel(Vec c,std::string t,float sz,NVGcolor col)
                 :text(t),fontSize(sz),color(col){box.pos=c.minus(Vec(40,8));box.size=Vec(80,16);}
             void draw(const DrawArgs& args) override {
-                nvgFontSize(args.vg,fontSize);
-                nvgTextAlign(args.vg,NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
-                nvgFillColor(args.vg,color);
-                nvgText(args.vg,box.size.x*.5f,box.size.y*.5f,text.c_str(),nullptr);
+                nvgFontSize(args.vg, fontSize);
+                nvgFontFaceId(args.vg, APP->window->uiFont->handle);
+                nvgTextAlign(args.vg, NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
+                nvgFillColor(args.vg, color);
+                // Draw text twice offset by 0.3px for bold effect
+                nvgText(args.vg, box.size.x*.5f,     box.size.y*.5f,     text.c_str(), nullptr);
+                nvgText(args.vg, box.size.x*.5f+0.3f,box.size.y*.5f,     text.c_str(), nullptr);
             }
         };
         auto lbl=[&](float x,float y,const char* t,float sz=8.f,
