@@ -519,14 +519,6 @@ struct Skyline : Module {
             bool isMuted   = stepMuted[editChan][i];
             bool inLen     = (i < seqLength[editChan]);
 
-            // ── Tiny LED above button: playhead (always red) ──
-            float tiny;
-            if      (isCurrent) tiny = 1.0f;
-            else if (!inLen)    tiny = 0.0f;
-            else if (isMuted)   tiny = 0.04f;
-            else                tiny = 0.10f;
-            setRGB(STEP_LIGHTS + i*3, tiny, 0.f, 0.f);
-
             // ── Button LED ──
             if (saveAnim.active && !saveAnim.isRecall) {
                 // SAVE progressive fill: amber sweeps left→right up to saved slot
@@ -578,11 +570,21 @@ struct Skyline : Module {
                 setRGB(BUTTON_LIGHTS + i*3, b, b, b);               // White
             }
             else {
-                // Normal: locked = bright red, live playhead = dim red
-                float b = 0.f;
-                if (editStepLocked && i == editStep)                b = 1.0f;
-                else if (!editStepLocked && i == seqPos[editChan]) b = 0.4f;
-                setRGB(BUTTON_LIGHTS + i*3, b, 0.f, 0.f);          // Red
+                // Normal: playhead = bright red, locked = medium, live target = dim
+                // muted in-length = dim purple, out of length = off
+                if (isCurrent) {
+                    setRGB(BUTTON_LIGHTS + i*3, 1.f, 0.f, 0.f);        // playhead bright red
+                } else if (editStepLocked && i == editStep) {
+                    setRGB(BUTTON_LIGHTS + i*3, 0.5f, 0.f, 0.f);       // locked step medium red
+                } else if (!editStepLocked && i == seqPos[editChan]) {
+                    setRGB(BUTTON_LIGHTS + i*3, 0.3f, 0.f, 0.f);       // live target dim red
+                } else if (isMuted && inLen) {
+                    setRGB(BUTTON_LIGHTS + i*3, 0.1f, 0.f, 0.15f);     // muted dim purple
+                } else if (inLen) {
+                    setRGB(BUTTON_LIGHTS + i*3, 0.05f, 0.f, 0.f);      // in-length very dim
+                } else {
+                    clearRGB(BUTTON_LIGHTS + i*3);                      // outside length = off
+                }
             }
         }
 
@@ -883,20 +885,12 @@ struct SkylineWidget : ModuleWidget {
 
         // ── Step buttons ─────────────────────────────────────
         for(int i=0;i<8;i++){
-            // RGB tiny LED above top-row button = playhead
-            addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(
-                mm2px(Vec(cX[i],yS1-6.5f)),module,Skyline::STEP_LIGHTS+i*3));
-
             // Top-row: ChannelStepButton with RGB button light
             auto* csb = createLightParamCentered<ChannelStepButton>(
                 mm2px(Vec(cX[i],yS1)), module,
                 Skyline::STEP_PARAMS+i, Skyline::BUTTON_LIGHTS+i*3);
             csb->chanIndex = i;
             addParam(csb);
-
-            // RGB tiny LED above bottom-row button = playhead
-            addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(
-                mm2px(Vec(cX[i],yS2-6.5f)),module,Skyline::STEP_LIGHTS+(8+i)*3));
 
             // Bottom-row: RGB button light
             addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<RedGreenBlueLight>>>(
