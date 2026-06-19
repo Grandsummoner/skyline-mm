@@ -98,15 +98,22 @@ struct Skyline : Module {
     bool  frozen[8]         = {};
     int   selectedChan      = 0;
 
-    // editChan: which channel is in edit mode. ALWAYS >= 0 — one channel
-    // is always selected. Default = 0 (channel 1). Cannot be cleared to -1.
-    // Switch by double-clicking a DIFFERENT channel button.
+    // editChan: which channel is the TARGET for MUTE/LENGTH/SCALE/SHIFT
+    // combo functions (matches manual: "select MUTE then the channel
+    // button"). NOT used for live recording — every slider always
+    // records to its own channel regardless of editChan.
+    // Navy-blue glow ring shows this on the channel LED.
     int   editChan          = 0;
-    // editStep: which step slider writes to.
-    // When editStepLocked=false: follows seqPos[editChan] (OG live record)
-    // When editStepLocked=true:  locked to a specific step (step button clicked)
-    int   editStep          = 0;
-    bool  editStepLocked    = false;
+
+    // globalStep: single global step-lock cursor shared by ALL channels.
+    // -1 = unlocked (every channel live-records to its own current
+    //      playing step — OG default behaviour)
+    // 0-15 = locked (every slider writes continuously to THIS step
+    //      number on its own channel, regardless of playhead)
+    // Click any of the 16 step buttons to lock/unlock (same button
+    // toggles off). This emulates "hold step + move slider" from the
+    // real hardware using a single mouse click instead of a hold gesture.
+    int   globalStep         = -1;
 
     // Glow animation phase for edit ring
     float glowPhase         = 0.f;
@@ -142,6 +149,8 @@ struct Skyline : Module {
     int   lastSeqPos[8]    = {};       // step position captured before advance
     float stepHoldTimer    = 0.f;      // hold window after clock edge
     static constexpr float STEP_HOLD_WINDOW = 0.08f; // 80ms
+    float timeSinceLastClock = 0.f;    // for measuring clock period
+    float lastClockPeriod    = 0.5f;   // seconds; default ~120 BPM guess
 
     Skyline() {
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
@@ -310,7 +319,9 @@ struct Skyline : Module {
             }
             else if (muteMode) {
                 if (i < 8) {
-                    // Toggle channel mute — do NOT change editChan
+                    // Top-row in MUTE: select target channel AND toggle its mute
+                    // (manual: "select MUTE then the corresponding channel button")
+                    editChan = i;
                     chanMuted[i] = !chanMuted[i];
                 }
                 else {
@@ -319,14 +330,14 @@ struct Skyline : Module {
                 }
             }
             else if (lengthMode) {
-                // Top-row in LENGTH mode: viewing only, no editChan change
-                // editChan is the channel whose length is being set
-                // Switch channels via double-click as usual
+                // Top-row in LENGTH: select which channel's length to set
+                if (i < 8) editChan = i;
             }
             else if (shiftMode) {
-                // Top-row in SHIFT mode: no editChan change
-                // All shift operations apply to editChan
-                if (i >= 8) {
+                if (i < 8) {
+                    // Top-row in SHIFT: select target channel
+                    editChan = i;
+                } else {
                     switch (i) {
                         case 8:  for(int s=0;s<16;s++) stepCV[editChan][s]=0.f; break;
                         case 9:  stepSmooth[editChan][seqPos[editChan]]=
@@ -346,46 +357,48 @@ struct Skyline : Module {
                 }
             }
             else if (scaleMode) {
-                // Top-row in SCALE mode: no editChan change
-                // Scale applies to editChan via slider
+                // Top-row in SCALE: select target channel
+                if (i < 8) editChan = i;
             }
             else {
-                // Normal mode — step buttons lock/unlock editStep
-                // Click a step = lock to that step (red LED stays on it)
-                // Click same step again = unlock (follow playhead = OG live record)
-                if (editStepLocked && editStep == i) {
-                    // Same step: unlock, go back to live record
-                    editStepLocked = false;
-                    editStep = seqPos[editChan];
+                // Normal mode: ANY of the 16 step buttons toggles the
+                // GLOBAL step lock. Click button N -> globalStep = N
+                // (every channel's slider now writes continuously to
+                // step N on its own sequence). Click the SAME button
+                // again -> unlock, every channel returns to live-
+                // recording its own current playing step.
+                if (globalStep == i) {
+                    globalStep = -1;
                 } else {
-                    // Different step or not locked: lock to this step
-                    editStep = i;
-                    editStepLocked = true;
+                    globalStep = i;
                 }
             }
         }
 
         // ============================================================
         // 3. LIVE RECORDING — all 8 sliders independently, no selection needed
+        // ============================================================
+        // 3. LIVE RECORDING — all 8 sliders independently, no selection
+        //    needed. Each slider always writes to its own channel.
         //
-        // Each channel's slider ALWAYS live-records to that channel's own
-        // sequence, regardless of which channel is glowing (editChan).
-        // Slider 1 → channel 1, slider 2 → channel 2, simultaneously.
+        // globalStep == -1 (unlocked): every channel writes to its OWN
+        //   current playing step (OG live-record-while-running behaviour).
+        //   Uses lastSeqPos during the post-clock hold window so a slider
+        //   move right after a step fires still hits that step accurately.
         //
-        // editChan/editStep/editStepLocked are now used ONLY for precision
-        // step-locking on the currently glowing channel — if that channel
-        // has a step locked, ITS slider writes to the locked step instead
-        // of the live playhead. All OTHER channels always live-record to
-        // their current playing step (using lastSeqPos during hold window
-        // for accurate boundary timing).
+        // globalStep >= 0 (locked): every channel writes continuously to
+        //   THAT step number on its own sequence, ignoring its playhead.
+        //   This is the mouse-friendly substitute for "hold step + move
+        //   slider" — click once to lock, wiggle freely, click again
+        //   to unlock.
         // ============================================================
         if (noMode) {
             for (int ch = 0; ch < 8; ch++) {
                 float sv = params[SLIDER_PARAMS + ch].getValue();
                 if (std::abs(sv - prevSlider[ch]) > 0.0001f) {
                     int targetStep;
-                    if (ch == editChan && editStepLocked) {
-                        targetStep = editStep;             // precision lock
+                    if (globalStep >= 0) {
+                        targetStep = globalStep;            // global lock
                     } else if (stepHoldTimer > 0.f) {
                         targetStep = lastSeqPos[ch];        // step that just played
                     } else {
@@ -440,6 +453,7 @@ struct Skyline : Module {
         // 7. CLOCK / ADVANCE
         // ============================================================
         bool clocked = false;
+        timeSinceLastClock += args.sampleTime;
         if (clkMode==1) {
             if (!holdHigh) {
                 float cv=inputs[CLOCK_INPUT].getVoltage();
@@ -451,7 +465,15 @@ struct Skyline : Module {
         } else {
             if (clockTrig.process(inputs[CLOCK_INPUT].getVoltage())) {
                 int div=(int)params[DIVIDE_PARAM].getValue();
-                if(++divCount>=div){divCount=0;clocked=true;}
+                if(++divCount>=div){
+                    divCount=0;
+                    clocked=true;
+                    // Measure period between effective (post-divide) ticks,
+                    // clamp to sane range so glide time never explodes
+                    if (timeSinceLastClock > 0.001f && timeSinceLastClock < 10.f)
+                        lastClockPeriod = timeSinceLastClock;
+                    timeSinceLastClock = 0.f;
+                }
             }
         }
 
@@ -460,8 +482,6 @@ struct Skyline : Module {
                 if(frozen[ch]) continue;
                 lastSeqPos[ch] = seqPos[ch]; // capture BEFORE advance
                 advanceChannel(ch);
-                if (ch == editChan && !editStepLocked)
-                    editStep = seqPos[editChan];
             }
             stepHoldTimer = STEP_HOLD_WINDOW; // start hold window
         }
@@ -493,9 +513,15 @@ struct Skyline : Module {
             if(scaleIndex[ch]>0&&scaleIndex[ch]<15)
                 v=quantizeVoltage(v/4.0f,scaleIndex[ch])*4.0f;
             if(stepSmooth[ch][pos]){
-                float rate=1.0f/(args.sampleRate*0.05f);
-                glideCV[ch]+=(v-glideCV[ch])*rate;
-                v=glideCV[ch];
+                // Glide time scales with the clock period so SMOOTH sounds
+                // meaningfully gradual at any tempo — exponential approach
+                // reaching ~95% of target by the time the next step fires.
+                // clockPeriod estimated from current DIVIDE-adjusted tempo;
+                // fall back to a generous 250ms minimum so it's always audible.
+                float glideTime = std::max(lastClockPeriod * 0.9f, 0.25f);
+                float rate = 1.0f / (args.sampleRate * glideTime);
+                glideCV[ch] += (v - glideCV[ch]) * rate;
+                v = glideCV[ch];
             } else {
                 glideCV[ch]=v;
             }
@@ -578,14 +604,13 @@ struct Skyline : Module {
                 setRGB(BUTTON_LIGHTS + i*3, b, b, b);               // White
             }
             else {
-                // Normal: playhead = bright red, locked = medium, live target = dim
+                // Normal: playhead (editChan's) = bright red,
+                // globally locked step = medium red (applies to all channels),
                 // muted in-length = dim purple, out of length = off
                 if (isCurrent) {
                     setRGB(BUTTON_LIGHTS + i*3, 1.f, 0.f, 0.f);        // playhead bright red
-                } else if (editStepLocked && i == editStep) {
-                    setRGB(BUTTON_LIGHTS + i*3, 0.5f, 0.f, 0.f);       // locked step medium red
-                } else if (!editStepLocked && i == seqPos[editChan]) {
-                    setRGB(BUTTON_LIGHTS + i*3, 0.3f, 0.f, 0.f);       // live target dim red
+                } else if (globalStep == i) {
+                    setRGB(BUTTON_LIGHTS + i*3, 0.5f, 0.f, 0.f);       // global lock medium red
                 } else if (isMuted && inLen) {
                     setRGB(BUTTON_LIGHTS + i*3, 0.1f, 0.f, 0.15f);     // muted dim purple
                 } else if (inLen) {
@@ -699,7 +724,7 @@ struct Skyline : Module {
             glideCV[ch]=0.f;
         }
         selectedChan=0;prevSelectedChan=0;divCount=0;
-        editChan=0; editStep=0; editStepLocked=false; glowPhase=0.f;
+        editChan=0; globalStep=-1; glowPhase=0.f;
         scaleSliderSnapshot=-1.f;
         for(int ch=0;ch<8;ch++) lengthSliderSnapshot[ch]=-1.f;
     }
@@ -751,7 +776,10 @@ struct SlimFader : app::ParamWidget {
 };
 
 // ============================================================
-// EditRingLight — yellow glowing ring drawn around a channel LED
+// EditRingLight — navy-blue glowing ring drawn around a channel LED
+// Shows which channel is the current target for MUTE/LENGTH/SCALE/SHIFT
+// combo functions (not used for live recording — every slider always
+// records to its own channel regardless of this ring).
 // ============================================================
 struct EditRingLight : widget::Widget {
     int     lightId  = 0;
@@ -767,12 +795,14 @@ struct EditRingLight : widget::Widget {
 
         Vec centre = box.size.div(2.f);
         float r = 9.5f;
+        // Navy blue: RGB approx (0.1, 0.2, 0.55)
+        const float NR = 0.1f, NG = 0.25f, NB = 0.6f;
 
         // Outer glow (soft, wide)
         NVGpaint glow = nvgRadialGradient(args.vg,
             centre.x, centre.y, r * 0.7f, r * 1.6f,
-            nvgRGBAf(1.f, 0.85f, 0.f, brightness * 0.55f),
-            nvgRGBAf(1.f, 0.85f, 0.f, 0.f));
+            nvgRGBAf(NR, NG, NB, brightness * 0.55f),
+            nvgRGBAf(NR, NG, NB, 0.f));
         nvgBeginPath(args.vg);
         nvgCircle(args.vg, centre.x, centre.y, r * 1.6f);
         nvgFillPaint(args.vg, glow);
@@ -781,48 +811,9 @@ struct EditRingLight : widget::Widget {
         // Inner ring stroke
         nvgBeginPath(args.vg);
         nvgCircle(args.vg, centre.x, centre.y, r);
-        nvgStrokeColor(args.vg, nvgRGBAf(1.f, 0.85f, 0.f, brightness * 0.9f));
+        nvgStrokeColor(args.vg, nvgRGBAf(NR, NG, NB, brightness * 0.9f));
         nvgStrokeWidth(args.vg, 1.8f);
         nvgStroke(args.vg);
-    }
-};
-
-// ============================================================
-// ChannelStepButton — subclasses VCVLightButton, intercepts
-// double-click to toggle editChan.
-// KEY: onDoubleClick only fires if onButton consumes the event.
-// We call the parent onButton first (so single-click still works
-// via stepTrig in process()), then consume to enable double-click.
-// ============================================================
-struct ChannelStepButton : VCVLightButton<MediumSimpleLight<RedGreenBlueLight>> {
-    int chanIndex = -1;
-
-    void onButton(const ButtonEvent& e) override {
-        // Call parent so single-click param behaviour is preserved
-        VCVLightButton<MediumSimpleLight<RedGreenBlueLight>>::onButton(e);
-        // Must consume left-press to receive onDoubleClick
-        if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT)
-            e.consume(this);
-    }
-
-    void onDoubleClick(const DoubleClickEvent& e) override {
-        if (!module) return;
-        Skyline* m = dynamic_cast<Skyline*>(module);
-        if (!m) return;
-        // Only switch if this is a DIFFERENT channel from current.
-        // Double-clicking the currently glowing channel is ignored —
-        // there must always be exactly one channel in edit.
-        if (m->editChan != chanIndex) {
-            m->editChan       = chanIndex;
-            m->editStep       = 0;
-            m->editStepLocked = false;
-            m->selectedChan   = chanIndex;
-            // Sync to current slider so first wiggle is detected correctly
-            m->prevSlider[chanIndex] =
-                m->params[Skyline::SLIDER_PARAMS + chanIndex].getValue();
-        }
-        // Same channel double-click: do nothing
-        e.consume(this);
     }
 };
 
@@ -888,15 +879,13 @@ struct SkylineWidget : ModuleWidget {
                 mm2px(Vec(cX[ch]-2.37f,ySld)),module,Skyline::SLIDER_PARAMS+ch));
 
         // ── Step buttons ─────────────────────────────────────
+        // Both rows are now identical: plain RGB light buttons.
+        // No double-click, no special widget — all 16 behave the same.
         for(int i=0;i<8;i++){
-            // Top-row: ChannelStepButton with RGB button light
-            auto* csb = createLightParamCentered<ChannelStepButton>(
-                mm2px(Vec(cX[i],yS1)), module,
-                Skyline::STEP_PARAMS+i, Skyline::BUTTON_LIGHTS+i*3);
-            csb->chanIndex = i;
-            addParam(csb);
+            addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<RedGreenBlueLight>>>(
+                mm2px(Vec(cX[i],yS1)),module,
+                Skyline::STEP_PARAMS+i, Skyline::BUTTON_LIGHTS+i*3));
 
-            // Bottom-row: RGB button light
             addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<RedGreenBlueLight>>>(
                 mm2px(Vec(cX[i],yS2)),module,
                 Skyline::STEP_PARAMS+8+i, Skyline::BUTTON_LIGHTS+(8+i)*3));
