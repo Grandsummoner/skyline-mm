@@ -165,7 +165,7 @@ struct Skyline : Module {
             case 1: seqPos[ch]=(seqPos[ch]-1+len)%len; break;
             case 2:
                 seqPos[ch]+=pendDir[ch];
-                if(seqPos[ch]>=len-1){seqPos[ch]=len-1;pendDir[ch]=-1;}
+                if(seqPos[ch]>=len-1){seqPos[ch]=len-1;pendDir[ch]-1;}
                 if(seqPos[ch]<=0)   {seqPos[ch]=0;     pendDir[ch]= 1;}
                 break;
             case 3: seqPos[ch]=(int)(random::uniform()*len); break;
@@ -711,9 +711,6 @@ struct SkylineWidget : ModuleWidget {
     SkylineWidget(Skyline* module) {
         setModule(module);
         setPanel(createPanel(asset::plugin(pluginInstance,"res/Skyline.svg")));
-
-        // Locks display width to exactly 20HP on the MetaModule screen grid
-        box.size.x = 20 * RACK_GRID_WIDTH;
 
         const float cX[8]={7.00f,19.51f,32.03f,44.54f,57.06f,69.57f,82.09f,94.60f};
         const float xJack=7.00f,xSwitch=20.00f;
