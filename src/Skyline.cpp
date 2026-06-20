@@ -75,12 +75,21 @@ struct Skyline : Module {
     }
     void clearRGB(int baseId) { setRGB(baseId, 0.f, 0.f, 0.f); }
 
+    // Struct optimized to avoid C++11 aggregate initialization issues
     struct SaveAnimation {
         bool  active    = false;
         int   slot      = -1;
         float timer     = 0.f;
         float duration  = 0.8f;
         bool  isRecall  = false;
+
+        void trigger(int sl, float dur, bool rec) {
+            active = true;
+            slot = sl;
+            timer = 0.f;
+            duration = dur;
+            isRecall = rec;
+        }
     };
     SaveAnimation saveAnim;
 
@@ -263,12 +272,12 @@ struct Skyline : Module {
             if (saveMode) {
                 savePreset(i);
                 params[SAVE_PARAM].setValue(0.f);
-                saveAnim = {true, i, 0.f, 0.8f, false};
+                saveAnim.trigger(i, 0.8f, false);
             }
             else if (recallMode) {
                 recallPreset(i);
                 params[RECALL_PARAM].setValue(0.f);
-                saveAnim = {true, i, 0.f, 0.4f, true};
+                saveAnim.trigger(i, 0.4f, true);
             }
             else if (muteMode) {
                 if (i < 8) {
@@ -611,4 +620,186 @@ struct SlimFader : app::ParamWidget {
     bool dragging=false; float dragStartY=0.f,dragStartVal=0.f;
     int  chanIndex=-1;
     Skyline* skyModule=nullptr;
-    SlimF
+    SlimFader(){box.size=Vec(HW,TH+HH);}
+    void drawLayer(const DrawArgs& args,int layer) override {
+        if(layer!=1) return;
+        float fillVal=getParamQuantity()?getParamQuantity()->getScaledValue():0.f;
+        float handleY=(1.f-fillVal)*TH, tx=(box.size.x-TW)*0.5f;
+
+        bool isTarget = skyModule && chanIndex >= 0 && chanIndex == skyModule->editChan &&
+            (skyModule->muteMode || skyModule->lengthMode ||
+             skyModule->scaleMode || skyModule->shiftMode);
+        if (isTarget) {
+            nvgBeginPath(args.vg);
+            nvgRoundedRect(args.vg, tx-3.f, HH*0.5f-3.f, TW+6.f, TH+6.f, 5.f);
+            nvgFillColor(args.vg, nvgRGBAf(0.1f,0.25f,0.6f,0.35f));
+            nvgFill(args.vg);
+        }
+
+        nvgBeginPath(args.vg); nvgRoundedRect(args.vg,tx,HH*0.5f,TW,TH,3.f);
+        nvgFillColor(args.vg,nvgRGB(0xb8,0xb5,0xae)); nvgFill(args.vg);
+        nvgBeginPath(args.vg); nvgRect(args.vg,tx,HH*0.5f+handleY,TW,TH-handleY);
+        nvgFillColor(args.vg,nvgRGB(0x99,0x20,0x20)); nvgFill(args.vg);
+        float hx=(box.size.x-HW)*0.5f;
+        nvgBeginPath(args.vg); nvgRoundedRect(args.vg,hx,handleY,HW,HH,2.f);
+        nvgFillColor(args.vg,nvgRGB(0x30,0x30,0x30)); nvgFill(args.vg);
+        nvgBeginPath(args.vg);
+        nvgMoveTo(args.vg,hx+2.f,handleY+HH*0.5f); nvgLineTo(args.vg,hx+HW-2.f,handleY+HH*0.5f);
+        nvgStrokeColor(args.vg,nvgRGB(0x80,0x80,0x80)); nvgStrokeWidth(args.vg,1.f); nvgStroke(args.vg);
+    }
+    void onButton(const ButtonEvent& e) override {
+        if(e.action==GLFW_PRESS&&e.button==GLFW_MOUSE_BUTTON_LEFT){
+            dragging=true; dragStartY=e.pos.y;
+            dragStartVal=getParamQuantity()?getParamQuantity()->getScaledValue():0.f;
+            e.consume(this);
+        }
+        if(e.action==GLFW_RELEASE) dragging=false;
+        ParamWidget::onButton(e);
+    }
+    void onDragMove(const DragMoveEvent& e) override {
+        if(!dragging||!getParamQuantity()) return;
+        float sensitivity = (APP->window->getMods() & RACK_MOD_CTRL) ? (float)TH*4 : (float)TH/2;
+        float delta = -e.mouseDelta.y / sensitivity;
+        dragStartVal = clamp(dragStartVal + delta, 0.f, 1.f);
+        getParamQuantity()->setScaledValue(dragStartVal);
+    }
+    void onDoubleClick(const DoubleClickEvent& e) override {
+        if(getParamQuantity()) getParamQuantity()->reset();
+    }
+};
+
+// ============================================================
+// EditRingLight
+// ============================================================
+struct EditRingLight : widget::Widget {
+    int     lightId  = 0;
+    Module* skyModule = nullptr;
+
+    EditRingLight() { box.size = Vec(22, 22); }
+
+    void drawLayer(const DrawArgs& args, int layer) override {
+        if (layer != 1) return;
+        if (!skyModule) return;
+        float brightness = skyModule->lights[lightId].getBrightness();
+        if (brightness <= 0.001f) return;
+
+        Vec centre = box.size.div(2.f);
+        float r = 9.5f;
+        const float NR = 0.1f, NG = 0.25f, NB = 0.6f;
+
+        NVGpaint glow = nvgRadialGradient(args.vg,
+            centre.x, centre.y, r * 0.7f, r * 1.6f,
+            nvgRGBAf(NR, NG, NB, brightness * 0.55f),
+            nvgRGBAf(NR, NG, NB, 0.f));
+        nvgBeginPath(args.vg);
+        nvgCircle(args.vg, centre.x, centre.y, r * 1.6f);
+        nvgFillPaint(args.vg, glow);
+        nvgFill(args.vg);
+
+        nvgBeginPath(args.vg);
+        nvgCircle(args.vg, centre.x, centre.y, r);
+        nvgStrokeColor(args.vg, nvgRGBAf(NR, NG, NB, brightness * 0.9f));
+        nvgStrokeWidth(args.vg, 1.8f);
+        nvgStroke(args.vg);
+    }
+};
+
+// ============================================================
+// Widget
+// ============================================================
+struct SkylineWidget : ModuleWidget {
+    SkylineWidget(Skyline* module) {
+        setModule(module);
+        setPanel(createPanel(asset::plugin(pluginInstance,"res/Skyline.svg")));
+
+        const float cX[8]={7.00f,19.51f,32.03f,44.54f,57.06f,69.57f,82.09f,94.60f};
+        const float xJack=7.00f,xSwitch=20.00f;
+        const float xK1=32.0f,xK2=48.5f,xK3=65.0f;
+        const float xB1=78.5f,xB2=87.0f,xB3=95.5f;
+        const float yOut=22.5f,yLed=31.0f;
+        const float yClk=46.0f,yKnob=53.5f,yRst=61.0f;
+        const float yB1=46.0f,yB2=61.0f;
+        const float ySld=70.0f,yS1=104.0f,yS2=119.0f,ySLbl=126.5f;
+
+        for(int ch=0;ch<8;ch++){
+            addOutput(createOutputCentered<PJ301MPort>(
+                mm2px(Vec(cX[ch],yOut)),module,Skyline::CV_OUTPUTS+ch));
+
+            auto* ring = new EditRingLight;
+            ring->skyModule = module;
+            ring->lightId   = Skyline::EDIT_RING_LIGHTS + ch;
+            ring->box.pos   = mm2px(Vec(cX[ch],yLed)).minus(ring->box.size.div(2.f));
+            addChild(ring);
+
+            addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(
+                mm2px(Vec(cX[ch],yLed)),module,Skyline::CHANNEL_LIGHTS+ch*3));
+        }
+
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(xJack,yClk)),module,Skyline::CLOCK_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(xJack,yRst)),module,Skyline::RESET_INPUT));
+        addParam(createParamCentered<CKSSThree>(mm2px(Vec(xSwitch,yKnob)),module,Skyline::CLK_SWITCH_PARAM));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(xK1,yKnob)),module,Skyline::OFFSET_PARAM));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(xK2,yKnob)),module,Skyline::ATTENUATE_PARAM));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(xK3,yKnob)),module,Skyline::DIVIDE_PARAM));
+
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
+            mm2px(Vec(xB1,yB1)),module,Skyline::MUTE_PARAM,  Skyline::MUTE_LIGHT));
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
+            mm2px(Vec(xB2,yB1)),module,Skyline::LENGTH_PARAM,Skyline::LENGTH_LIGHT));
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
+            mm2px(Vec(xB3,yB1)),module,Skyline::SHIFT_PARAM, Skyline::SHIFT_LIGHT));
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
+            mm2px(Vec(xB1,yB2)),module,Skyline::SCALE_PARAM, Skyline::SCALE_LIGHT));
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
+            mm2px(Vec(xB2,yB2)),module,Skyline::SAVE_PARAM,  Skyline::SAVE_LIGHT));
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
+            mm2px(Vec(xB3,yB2)),module,Skyline::RECALL_PARAM,Skyline::RECALL_LIGHT));
+
+        for(int ch=0;ch<8;ch++){
+            auto* sf = createParam<SlimFader>(
+                mm2px(Vec(cX[ch]-2.37f,ySld)),module,Skyline::SLIDER_PARAMS+ch);
+            sf->chanIndex  = ch;
+            sf->skyModule  = module;
+            addParam(sf);
+        }
+
+        for(int i=0;i<8;i++){
+            addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<RedGreenBlueLight>>>(
+                mm2px(Vec(cX[i],yS1)),module,
+                Skyline::STEP_PARAMS+i, Skyline::BUTTON_LIGHTS+i*3));
+
+            addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<RedGreenBlueLight>>>(
+                mm2px(Vec(cX[i],yS2)),module,
+                Skyline::STEP_PARAMS+8+i, Skyline::BUTTON_LIGHTS+(8+i)*3));
+        }
+
+        struct PanelLabel : widget::Widget {
+            std::string text; float fontSize; NVGcolor color;
+            PanelLabel(Vec c,std::string t,float sz,NVGcolor col)
+                :text(t),fontSize(sz),color(col){box.pos=c.minus(Vec(40,8));box.size=Vec(80,16);}
+            void draw(const DrawArgs& args) override {
+                nvgFontSize(args.vg, fontSize);
+                nvgFontFaceId(args.vg, APP->window->uiFont->handle);
+                nvgTextAlign(args.vg, NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
+                nvgFillColor(args.vg, color);
+                nvgText(args.vg, box.size.x*.5f,     box.size.y*.5f,     text.c_str(), nullptr);
+                nvgText(args.vg, box.size.x*.5f+0.3f,box.size.y*.5f,     text.c_str(), nullptr);
+            }
+        };
+        auto lbl=[&](float x,float y,const char* t,float sz=8.f,
+                     NVGcolor c=nvgRGB(0x33,0x33,0x33)){
+            addChild(new PanelLabel(mm2px(Vec(x,y)),t,sz,c));
+        };
+        lbl(50.8f,5.0f,"SKYLINE",12.f,nvgRGB(0x11,0x11,0x11));
+        lbl(50.8f,9.5f,"8 CHANNEL CV SEQUENCER",7.f,nvgRGB(0x77,0x77,0x77));
+        for(int i=0;i<8;i++) lbl(cX[i],14.5f,std::to_string(i+1).c_str(),9.f);
+        lbl(xJack,38.5f,"CLK/CV",7.5f); lbl(xJack,66.5f,"RST/HLD",7.5f);
+        lbl(xK1,38.5f,"OFFSET",7.5f); lbl(xK2,38.5f,"ATTEN",7.5f); lbl(xK3,38.5f,"DIVIDE",7.5f);
+        lbl(xB1,38.5f,"MUTE",7.5f); lbl(xB2,38.5f,"LEN",7.5f); lbl(xB3,38.5f,"SHIFT",7.5f);
+        lbl(xB1,54.5f,"SCALE",7.5f); lbl(xB2,54.5f,"SAVE",7.5f); lbl(xB3,54.5f,"RECALL",7.5f);
+        const char* fn[8]={"CLEAR","SMOOTH","RND","FREEZE","FWD","REV","PEND","RNDSEQ"};
+        for(int i=0;i<8;i++) lbl(cX[i],ySLbl,fn[i],7.f);
+    }
+};
+
+Model* modelSkyline = createModel<Skyline, SkylineWidget>("Skyline");
