@@ -16,7 +16,7 @@ include(${METAMODULE_SDK_DIR}/plugin.cmake)
 
 # 3. Declare the project metadata
 project(maybe-Skyline
-    VERSION 2.0.0
+    VERSION 2.0.1
     DESCRIPTION "Skyline for MetaModule"
     LANGUAGES C CXX ASM
 )
