@@ -41,14 +41,10 @@ static float quantizeVoltage(float v, int scaleIdx) {
 // ============================================================
 struct Skyline : Module {
 // ============================================================
-    // OPTIMIZED ENUM MOVED TO THE ABSOLUTE TOP FOR HARDWARE AUTO-MAPPING
     enum ParamIds {
-        ENUMS(SLIDER_PARAMS, 8),      // Sliders 1-6 -> Knobs A-F; Sliders 7-8 -> Trimmers y, z
-        DIVIDE_PARAM,                 // Trimmer u
-        OFFSET_PARAM,                 // Trimmer v
-        ATTENUATE_PARAM,              // Trimmer w
-        CLK_SWITCH_PARAM,             // Trimmer x
+        DIVIDE_PARAM, ATTENUATE_PARAM, OFFSET_PARAM, CLK_SWITCH_PARAM,
         MUTE_PARAM, LENGTH_PARAM, SHIFT_PARAM, SCALE_PARAM, SAVE_PARAM, RECALL_PARAM,
+        ENUMS(SLIDER_PARAMS, 8),
         ENUMS(STEP_PARAMS, 16),
         NUM_PARAMS
     };
@@ -612,113 +608,25 @@ struct Skyline : Module {
 };
 
 // ============================================================
-// FaderParam (EMPTY, INVISIBLE PARAMWIDGET FOR PERFORMANCE AUTOMAP DETECTION)
+// InvisibleParam (EMPTY, INVISIBLE PARAMWIDGET FOR PERFORMANCE AUTOMAP DETECTION)
 // ============================================================
-struct FaderParam : app::ParamWidget {
-    FaderParam() {
-        box.size = Vec(14, 68); // Exact physical dragging box size for mouse control
-    }
-    void draw(const DrawArgs& args) override {
-        // Draw nothing! The parent SkylineWidget::draw() will draw the graphics centrally.
+struct InvisibleParam : app::ParamWidget {
+    InvisibleParam() {
+        box.size = Vec(14, 68); // Match the exact physical size of the faders
     }
 };
 
 // ============================================================
-// Widget
+// SkylineDisplay (CUSTOM WIDGET COMMITTED AS GENERIC GRAPHICAL WIDGET TO FORCE HARDWARE DRAW CALLS)
 // ============================================================
-struct SkylineWidget : ModuleWidget {
-    SkylineWidget(Skyline* module) {
-        setModule(module);
-        setPanel(createPanel(asset::plugin(pluginInstance,"res/Skyline.svg")));
+struct SkylineDisplay : widget::Widget {
+    Skyline* skyModule = nullptr;
 
-        const float cX[8]={7.00f,19.51f,32.03f,44.54f,57.06f,69.57f,82.09f,94.60f};
-        const float xJack=7.00f,xSwitch=20.00f;
-        const float xK1=32.0f,xK2=48.5f,xK3=65.0f;
-        const float xB1=78.5f,xB2=87.0f,xB3=95.5f;
-        const float yOut=22.5f,yLed=31.0f;
-        const float yClk=46.0f,yKnob=53.5f,yRst=61.0f;
-        const float yB1=46.0f,yB2=61.0f;
-        const float ySld=70.0f,yS1=104.0f,yS2=119.0f,ySLbl=126.5f;
-
-        for(int ch=0;ch<8;ch++){
-            addOutput(createOutputCentered<PJ301MPort>(
-                mm2px(Vec(cX[ch],yOut)),module,Skyline::CV_OUTPUTS+ch));
-
-            addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(
-                mm2px(Vec(cX[ch],yLed)),module,Skyline::CHANNEL_LIGHTS+ch*3));
-        }
-
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(xJack,yClk)),module,Skyline::CLOCK_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(xJack,yRst)),module,Skyline::RESET_INPUT));
-        addParam(createParamCentered<CKSSThree>(mm2px(Vec(xSwitch,yKnob)),module,Skyline::CLK_SWITCH_PARAM));
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(xK1,yKnob)),module,Skyline::OFFSET_PARAM));
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(xK2,yKnob)),module,Skyline::ATTENUATE_PARAM));
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(xK3,yKnob)),module,Skyline::DIVIDE_PARAM));
-
-        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
-            mm2px(Vec(xB1,yB1)),module,Skyline::MUTE_PARAM,  Skyline::MUTE_LIGHT));
-        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
-            mm2px(Vec(xB2,yB1)),module,Skyline::LENGTH_PARAM,Skyline::LENGTH_LIGHT));
-        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
-            mm2px(Vec(xB3,yB1)),module,Skyline::SHIFT_PARAM, Skyline::SHIFT_LIGHT));
-        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
-            mm2px(Vec(xB1,yB2)),module,Skyline::SCALE_PARAM, Skyline::SCALE_LIGHT));
-        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
-            mm2px(Vec(xB2,yB2)),module,Skyline::SAVE_PARAM,  Skyline::SAVE_LIGHT));
-        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
-            mm2px(Vec(xB3,yB2)),module,Skyline::RECALL_PARAM,Skyline::RECALL_LIGHT));
-
-        // REGISTER AS STANDARD PARAMETERS SO THE METAMODULE HARDWARE AUTO-MAPPER DETECTS THEM
-        for(int ch=0;ch<8;ch++){
-            auto* fp = createParamCentered<FaderParam>(mm2px(Vec(cX[ch], ySld + 30.f)), module, Skyline::SLIDER_PARAMS + ch);
-            addParam(fp);
-        }
-
-        for(int i=0;i<8;i++){
-            addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<RedGreenBlueLight>>>(
-                mm2px(Vec(cX[i],yS1)),module,
-                Skyline::STEP_PARAMS+i, Skyline::BUTTON_LIGHTS+i*3));
-
-            addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<RedGreenBlueLight>>>(
-                mm2px(Vec(cX[i],yS2)),module,
-                Skyline::STEP_PARAMS+8+i, Skyline::BUTTON_LIGHTS+(8+i)*3));
-        }
-
-        struct PanelLabel : widget::Widget {
-            std::string text; float fontSize; NVGcolor color;
-            PanelLabel(Vec c,std::string t,float sz,NVGcolor col)
-                :text(t),fontSize(sz),color(col){box.pos=c.minus(Vec(40,8));box.size=Vec(80,16);}
-            void draw(const DrawArgs& args) override {
-                nvgFontSize(args.vg, fontSize);
-                nvgFontFaceId(args.vg, APP->window->uiFont->handle);
-                nvgTextAlign(args.vg, NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
-                nvgFillColor(args.vg, color);
-                nvgText(args.vg, box.size.x*.5f,     box.size.y*.5f,     text.c_str(), nullptr);
-                nvgText(args.vg, box.size.x*.5f+0.3f,box.size.y*.5f,     text.c_str(), nullptr);
-            }
-        };
-        auto lbl=[&](float x,float y,const char* t,float sz=8.f,
-                     NVGcolor c=nvgRGB(0x33,0x33,0x33)){
-            addChild(new PanelLabel(mm2px(Vec(x,y)),t,sz,c));
-        };
-        lbl(50.8f,5.0f,"SKYLINE",12.f,nvgRGB(0x11,0x11,0x11));
-        lbl(50.8f,9.5f,"8 CHANNEL CV SEQUENCER",7.f,nvgRGB(0x77,0x77,0x77));
-        for(int i=0;i<8;i++) lbl(cX[i],14.5f,std::to_string(i+1).c_str(),9.f);
-        lbl(xJack,38.5f,"CLK/CV",7.5f); lbl(xJack,66.5f,"RST/HLD",7.5f);
-        lbl(xK1,38.5f,"OFFSET",7.5f); lbl(xK2,38.5f,"ATTEN",7.5f); lbl(xK3,38.5f,"DIVIDE",7.5f);
-        lbl(xB1,38.5f,"MUTE",7.5f); lbl(xB2,38.5f,"LEN",7.5f); lbl(xB3,38.5f,"SHIFT",7.5f);
-        lbl(xB1,54.5f,"SCALE",7.5f); lbl(xB2,54.5f,"SAVE",7.5f); lbl(xB3,54.5f,"RECALL",7.5f);
-        const char* fn[8] = {"CLEAR","SMOOTH","RND","FREEZE","FWD","REV","PEND","RNDSEQ"};
-        for(int i=0;i<8;i++) lbl(cX[i],ySLbl,fn[i],7.f);
+    SkylineDisplay() {
+        box.size = Vec(300, 380); // covers the faders and the LED rings
     }
 
-    // CENTRALIZED DRAWING METHOD: GUARANTEED TO BE EXECUTED NATIVELY BY THE METAMODULE DISPLAY GRAPHICS
     void draw(const DrawArgs& args) override {
-        // Draw the background panel PNG first
-        ModuleWidget::draw(args);
-
-        // Get pointer to our module
-        Skyline* skyModule = dynamic_cast<Skyline*>(module);
         if (!skyModule) return;
 
         const float cX[8]={7.00f,19.51f,32.03f,44.54f,57.06f,69.57f,82.09f,94.60f};
@@ -798,6 +706,102 @@ struct SkylineWidget : ModuleWidget {
             nvgStrokeWidth(args.vg, 1.f);
             nvgStroke(args.vg);
         }
+    }
+};
+
+// ============================================================
+// Widget
+// ============================================================
+struct SkylineWidget : ModuleWidget {
+    SkylineWidget(Skyline* module) {
+        setModule(module);
+        setPanel(createPanel(asset::plugin(pluginInstance,"res/Skyline.svg")));
+
+        const float cX[8]={7.00f,19.51f,32.03f,44.54f,57.06f,69.57f,82.09f,94.60f};
+        const float xJack=7.00f,xSwitch=20.00f;
+        const float xK1=32.0f,xK2=48.5f,xK3=65.0f;
+        const float xB1=78.5f,xB2=87.0f,xB3=95.5f;
+        const float yOut=22.5f,yLed=31.0f;
+        const float yClk=46.0f,yKnob=53.5f,yRst=61.0f;
+        const float yB1=46.0f,yB2=61.0f;
+        const float ySld=70.0f,yS1=104.0f,yS2=119.0f,ySLbl=126.5f;
+
+        // Create and register centralized custom display widget (guaranteed to render on screen)
+        auto* disp = new SkylineDisplay();
+        disp->skyModule = module;
+        disp->box.pos = Vec(0, 0);
+        addChild(disp);
+
+        for(int ch=0;ch<8;ch++){
+            addOutput(createOutputCentered<PJ301MPort>(
+                mm2px(Vec(cX[ch],yOut)),module,Skyline::CV_OUTPUTS+ch));
+
+            addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(
+                mm2px(Vec(cX[ch],yLed)),module,Skyline::CHANNEL_LIGHTS+ch*3));
+        }
+
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(xJack,yClk)),module,Skyline::CLOCK_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(xJack,yRst)),module,Skyline::RESET_INPUT));
+        addParam(createParamCentered<CKSSThree>(mm2px(Vec(xSwitch,yKnob)),module,Skyline::CLK_SWITCH_PARAM));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(xK1,yKnob)),module,Skyline::OFFSET_PARAM));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(xK2,yKnob)),module,Skyline::ATTENUATE_PARAM));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(xK3,yKnob)),module,Skyline::DIVIDE_PARAM));
+
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
+            mm2px(Vec(xB1,yB1)),module,Skyline::MUTE_PARAM,  Skyline::MUTE_LIGHT));
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
+            mm2px(Vec(xB2,yB1)),module,Skyline::LENGTH_PARAM,Skyline::LENGTH_LIGHT));
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
+            mm2px(Vec(xB3,yB1)),module,Skyline::SHIFT_PARAM, Skyline::SHIFT_LIGHT));
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
+            mm2px(Vec(xB1,yB2)),module,Skyline::SCALE_PARAM, Skyline::SCALE_LIGHT));
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
+            mm2px(Vec(xB2,yB2)),module,Skyline::SAVE_PARAM,  Skyline::SAVE_LIGHT));
+        addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
+            mm2px(Vec(xB3,yB2)),module,Skyline::RECALL_PARAM,Skyline::RECALL_LIGHT));
+
+        // REGISTER AS STANDARD PARAMETERS SO THE METAMODULE HARDWARE AUTO-MAPPER DETECTS THEM
+        for(int ch=0;ch<8;ch++){
+            auto* fp = createParamCentered<FaderParam>(mm2px(Vec(cX[ch], ySld + 30.f)), module, Skyline::SLIDER_PARAMS + ch);
+            addParam(fp);
+        }
+
+        for(int i=0;i<8;i++){
+            addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<RedGreenBlueLight>>>(
+                mm2px(Vec(cX[i],yS1)),module,
+                Skyline::STEP_PARAMS+i, Skyline::BUTTON_LIGHTS+i*3));
+
+            addParam(createLightParamCentered<VCVLightButton<MediumSimpleLight<RedGreenBlueLight>>>(
+                mm2px(Vec(cX[i],yS2)),module,
+                Skyline::STEP_PARAMS+8+i, Skyline::BUTTON_LIGHTS+(8+i)*3));
+        }
+
+        struct PanelLabel : widget::Widget {
+            std::string text; float fontSize; NVGcolor color;
+            PanelLabel(Vec c,std::string t,float sz,NVGcolor col)
+                :text(t),fontSize(sz),color(col){box.pos=c.minus(Vec(40,8));box.size=Vec(80,16);}
+            void draw(const DrawArgs& args) override {
+                nvgFontSize(args.vg, fontSize);
+                nvgFontFaceId(args.vg, APP->window->uiFont->handle);
+                nvgTextAlign(args.vg, NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
+                nvgFillColor(args.vg, color);
+                nvgText(args.vg, box.size.x*.5f,     box.size.y*.5f,     text.c_str(), nullptr);
+                nvgText(args.vg, box.size.x*.5f+0.3f,box.size.y*.5f,     text.c_str(), nullptr);
+            }
+        };
+        auto lbl=[&](float x,float y,const char* t,float sz=8.f,
+                     NVGcolor c=nvgRGB(0x33,0x33,0x33)){
+            addChild(new PanelLabel(mm2px(Vec(x,y)),t,sz,c));
+        };
+        lbl(50.8f,5.0f,"SKYLINE",12.f,nvgRGB(0x11,0x11,0x11));
+        lbl(50.8f,9.5f,"8 CHANNEL CV SEQUENCER",7.f,nvgRGB(0x77,0x77,0x77));
+        for(int i=0;i<8;i++) lbl(cX[i],14.5f,std::to_string(i+1).c_str(),9.f);
+        lbl(xJack,38.5f,"CLK/CV",7.5f); lbl(xJack,66.5f,"RST/HLD",7.5f);
+        lbl(xK1,38.5f,"OFFSET",7.5f); lbl(xK2,38.5f,"ATTEN",7.5f); lbl(xK3,38.5f,"DIVIDE",7.5f);
+        lbl(xB1,38.5f,"MUTE",7.5f); lbl(xB2,38.5f,"LEN",7.5f); lbl(xB3,38.5f,"SHIFT",7.5f);
+        lbl(xB1,54.5f,"SCALE",7.5f); lbl(xB2,54.5f,"SAVE",7.5f); lbl(xB3,54.5f,"RECALL",7.5f);
+        const char* fn[8] = {"CLEAR","SMOOTH","RND","FREEZE","FWD","REV","PEND","RNDSEQ"};
+        for(int i=0;i<8;i++) lbl(cX[i],ySLbl,fn[i],7.f);
     }
 };
 
