@@ -15,7 +15,7 @@ endif()
 include(${METAMODULE_SDK_DIR}/plugin.cmake)
 
 # 3. Declare the project metadata
-project(maybe-Skyline
+project(maybe-Skyline-MM
     VERSION 2.0.1
     DESCRIPTION "Skyline for MetaModule"
     LANGUAGES C CXX ASM
@@ -40,7 +40,7 @@ endif()
 # 8. Call the built-in creator to build the final hardware-ready plugin bundle
 create_plugin(
     SOURCE_LIB Skyline
-    PLUGIN_NAME maybe-Skyline
+    PLUGIN_NAME maybe-Skyline-MM
     PLUGIN_JSON ${CMAKE_CURRENT_LIST_DIR}/plugin.json
     SOURCE_ASSETS ${CMAKE_CURRENT_LIST_DIR}/assets
     DESTINATION ${MM_INSTALL_DIR}
