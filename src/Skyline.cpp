@@ -41,7 +41,6 @@ static float quantizeVoltage(float v, int scaleIdx) {
 // ============================================================
 struct Skyline : Module {
 // ============================================================
-    // RESTRUCTURED ENUM FOR METAMODULE HARDWARE AUTO-MAPPING:
     enum ParamIds {
         ENUMS(SLIDER_PARAMS, 8),      // Sliders 1-6 -> Knobs A-F; Sliders 7-8 -> Trimmers y, z
         DIVIDE_PARAM,                 // Trimmer u
@@ -613,18 +612,21 @@ struct Skyline : Module {
 };
 
 // ============================================================
-// SlimFader
+// SlimFader (MAPPED TO GENERIC WIDGET TO BYPASS HARDWARE PARAM AUTO-RENDERING)
 // ============================================================
-struct SlimFader : app::ParamWidget {
+struct SlimFader : widget::Widget { // Inherits from Widget so draw() is strictly called
     static const int TW=6,TH=60,HW=14,HH=8;
     bool dragging=false; float dragStartY=0.f,dragStartVal=0.f;
     int  chanIndex=-1;
     Skyline* skyModule=nullptr;
     SlimFader(){box.size=Vec(HW,TH+HH);}
     
-    // CHANGED TO STANDARD DRAW() TO COMPLY WITH METAMODULE DISPLAY LIMITS
     void draw(const DrawArgs& args) override {
-        float fillVal=getParamQuantity()?getParamQuantity()->getScaledValue():0.f;
+        // Read directly from the parameter slot via module pointer
+        float fillVal = 0.f;
+        if (skyModule) {
+            fillVal = skyModule->params[Skyline::SLIDER_PARAMS + chanIndex].getValue();
+        }
         float handleY=(1.f-fillVal)*TH, tx=(box.size.x-TW)*0.5f;
 
         bool isTarget = skyModule && chanIndex >= 0 && chanIndex == skyModule->editChan &&
@@ -648,24 +650,34 @@ struct SlimFader : app::ParamWidget {
         nvgMoveTo(args.vg,hx+2.f,handleY+HH*0.5f); nvgLineTo(args.vg,hx+HW-2.f,handleY+HH*0.5f);
         nvgStrokeColor(args.vg,nvgRGB(0x80,0x80,0x80)); nvgStrokeWidth(args.vg,1.f); nvgStroke(args.vg);
     }
+    
     void onButton(const ButtonEvent& e) override {
         if(e.action==GLFW_PRESS&&e.button==GLFW_MOUSE_BUTTON_LEFT){
             dragging=true; dragStartY=e.pos.y;
-            dragStartVal=getParamQuantity()?getParamQuantity()->getScaledValue():0.f;
+            if (skyModule) {
+                dragStartVal = skyModule->params[Skyline::SLIDER_PARAMS + chanIndex].getValue();
+            } else {
+                dragStartVal = 0.f;
+            }
             e.consume(this);
         }
         if(e.action==GLFW_RELEASE) dragging=false;
-        ParamWidget::onButton(e);
     }
+    
     void onDragMove(const DragMoveEvent& e) override {
-        if(!dragging||!getParamQuantity()) return;
+        if(!dragging||!skyModule) return;
         float sensitivity = (APP->window->getMods() & RACK_MOD_CTRL) ? (float)TH*4 : (float)TH/2;
         float delta = -e.mouseDelta.y / sensitivity;
         dragStartVal = clamp(dragStartVal + delta, 0.f, 1.f);
-        getParamQuantity()->setScaledValue(dragStartVal);
+        
+        // Write parameter directly into memory so auto-mapping and DSP process read it instantly
+        skyModule->params[Skyline::SLIDER_PARAMS + chanIndex].setValue(dragStartVal);
     }
+    
     void onDoubleClick(const DoubleClickEvent& e) override {
-        if(getParamQuantity()) getParamQuantity()->reset();
+        if (skyModule) {
+            skyModule->params[Skyline::SLIDER_PARAMS + chanIndex].setValue(0.f);
+        }
     }
 };
 
@@ -678,7 +690,6 @@ struct EditRingLight : widget::Widget {
 
     EditRingLight() { box.size = Vec(22, 22); }
 
-    // CHANGED TO STANDARD DRAW() TO COMPLY WITH METAMODULE DISPLAY LIMITS
     void draw(const DrawArgs& args) override {
         if (!skyModule) return;
         float brightness = skyModule->lights[lightId].getBrightness();
@@ -756,12 +767,13 @@ struct SkylineWidget : ModuleWidget {
         addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
             mm2px(Vec(xB3,yB2)),module,Skyline::RECALL_PARAM,Skyline::RECALL_LIGHT));
 
+        // Added as general Widget children instead of paramWidgets to bypass 4ms native display hiding
         for(int ch=0;ch<8;ch++){
-            auto* sf = createParam<SlimFader>(
-                mm2px(Vec(cX[ch]-2.37f,ySld)),module,Skyline::SLIDER_PARAMS+ch);
+            auto* sf = new SlimFader();
+            sf->box.pos = mm2px(Vec(cX[ch]-2.37f,ySld));
             sf->chanIndex  = ch;
             sf->skyModule  = module;
-            addParam(sf);
+            addChild(sf);
         }
 
         for(int i=0;i<8;i++){
