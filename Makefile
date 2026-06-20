@@ -1,13 +1,16 @@
-# maybe VCV Rack Plugin
+# If RACK_DIR is not defined when calling make, default to the SDK directory
+RACK_DIR ?= ../..
 
-RACK_DIR ?= ../Rack-SDK
+# FLAGS will be passed to both C and C++ compilers
+FLAGS +=
+CFLAGS +=
+CXXFLAGS +=
 
-FLAGS += -Isrc
-
+# List of source files to compile
 SOURCES += $(wildcard src/*.cpp)
 
-DISTRIBUTABLES += res $(wildcard LICENSE*)
+# List of helper files to include in distribution (SVG panel and metadata)
+DISTRIBUTABLES += plugin.json res/
 
+# Include the standard Rack plugin Makefile framework
 include $(RACK_DIR)/plugin.mk
-
-CXXFLAGS := $(filter-out -std=c++11,$(CXXFLAGS)) -std=c++20
