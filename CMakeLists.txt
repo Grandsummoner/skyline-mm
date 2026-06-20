@@ -42,5 +42,6 @@ create_plugin(
     SOURCE_LIB Skyline
     PLUGIN_NAME maybe-Skyline
     PLUGIN_JSON ${CMAKE_CURRENT_LIST_DIR}/plugin.json
+    SOURCE_ASSETS ${CMAKE_CURRENT_LIST_DIR}/assets
     DESTINATION ${MM_INSTALL_DIR}
 )
