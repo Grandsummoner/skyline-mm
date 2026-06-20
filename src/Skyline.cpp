@@ -594,9 +594,12 @@ struct Skyline : Module {
                 setRGB(BUTTON_LIGHTS + i*3, 0.f, b, 0.f);           // Green
             }
             else if (scaleMode) {
-                // Blue: selected scale button
+                // Blue: button matching the current scale index (0-15) lights up.
+                // Which channel this applies to is shown by the navy glow ring
+                // on the channel LED (editChan) — not duplicated here, since
+                // scale index and channel index share the same 0-7 button range.
                 float b = (i == scaleIndex[editChan]) ? 1.f : 0.f;
-                setRGB(BUTTON_LIGHTS + i*3, 0.f, 0.4f*b, 1.f*b);   // Blue
+                setRGB(BUTTON_LIGHTS + i*3, 0.f, 0.4f*b, 1.f*b);
             }
             else if (shiftMode) {
                 // White dim: bottom-row shows accessible functions
@@ -736,11 +739,27 @@ struct Skyline : Module {
 struct SlimFader : app::ParamWidget {
     static const int TW=6,TH=60,HW=14,HH=8;
     bool dragging=false; float dragStartY=0.f,dragStartVal=0.f;
+    int  chanIndex=-1;          // which channel this slider belongs to
+    Skyline* skyModule=nullptr; // for reading editChan / mode state
     SlimFader(){box.size=Vec(HW,TH+HH);}
     void drawLayer(const DrawArgs& args,int layer) override {
         if(layer!=1) return;
         float val=getParamQuantity()?getParamQuantity()->getScaledValue():0.f;
         float handleY=(1.f-val)*TH, tx=(box.size.x-TW)*0.5f;
+
+        // Navy highlight behind the track if this channel is the active
+        // mode target (MUTE/LENGTH/SCALE/SHIFT) — makes it unmistakable
+        // which slider will respond to combo-function input.
+        bool isTarget = skyModule && chanIndex >= 0 && chanIndex == skyModule->editChan &&
+            (skyModule->muteMode || skyModule->lengthMode ||
+             skyModule->scaleMode || skyModule->shiftMode);
+        if (isTarget) {
+            nvgBeginPath(args.vg);
+            nvgRoundedRect(args.vg, tx-3.f, HH*0.5f-3.f, TW+6.f, TH+6.f, 5.f);
+            nvgFillColor(args.vg, nvgRGBAf(0.1f,0.25f,0.6f,0.35f));
+            nvgFill(args.vg);
+        }
+
         nvgBeginPath(args.vg); nvgRoundedRect(args.vg,tx,HH*0.5f,TW,TH,3.f);
         nvgFillColor(args.vg,nvgRGB(0xb8,0xb5,0xae)); nvgFill(args.vg);
         nvgBeginPath(args.vg); nvgRect(args.vg,tx,HH*0.5f+handleY,TW,TH-handleY);
@@ -874,9 +893,13 @@ struct SkylineWidget : ModuleWidget {
         addParam(createLightParamCentered<VCVLightLatch<MediumSimpleLight<RedGreenBlueLight>>>(
             mm2px(Vec(xB3,yB2)),module,Skyline::RECALL_PARAM,Skyline::RECALL_LIGHT));
 
-        for(int ch=0;ch<8;ch++)
-            addParam(createParam<SlimFader>(
-                mm2px(Vec(cX[ch]-2.37f,ySld)),module,Skyline::SLIDER_PARAMS+ch));
+        for(int ch=0;ch<8;ch++){
+            auto* sf = createParam<SlimFader>(
+                mm2px(Vec(cX[ch]-2.37f,ySld)),module,Skyline::SLIDER_PARAMS+ch);
+            sf->chanIndex  = ch;
+            sf->skyModule  = module;
+            addParam(sf);
+        }
 
         // ── Step buttons ─────────────────────────────────────
         // Both rows are now identical: plain RGB light buttons.
