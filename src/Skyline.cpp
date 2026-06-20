@@ -183,7 +183,7 @@ struct Skyline : Module {
     void recallPreset(int slot) {
         if(!presetValid[slot]) return;
         for(int ch=0;ch<8;ch++){
-            for(int s=0;s<16;s++) stepCV[ch][s]=presetCV[slot][ch][s];
+            for(int s=0;s<16;s++) presetCV[slot][ch][s]=presetCV[slot][ch][s];
             seqLength[ch] =presetLen[slot][ch];
             scaleIndex[ch]=presetScale[slot][ch];
             direction[ch] =presetDir[slot][ch];
@@ -608,11 +608,14 @@ struct Skyline : Module {
 };
 
 // ============================================================
-// InvisibleParam (EMPTY, INVISIBLE PARAMWIDGET FOR PERFORMANCE AUTOMAP DETECTION)
+// FaderParam (EMPTY, INVISIBLE PARAMWIDGET FOR PERFORMANCE AUTOMAP DETECTION)
 // ============================================================
-struct InvisibleParam : app::ParamWidget {
-    InvisibleParam() {
-        box.size = Vec(14, 68); // Match the exact physical size of the faders
+struct FaderParam : app::ParamWidget {
+    FaderParam() {
+        box.size = Vec(14, 68); // Exact physical dragging box size for mouse control
+    }
+    void draw(const DrawArgs& args) override {
+        // Draw nothing! The parent SkylineWidget::draw() will draw the graphics centrally.
     }
 };
 
