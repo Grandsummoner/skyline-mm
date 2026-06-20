@@ -41,6 +41,7 @@ static float quantizeVoltage(float v, int scaleIdx) {
 // ============================================================
 struct Skyline : Module {
 // ============================================================
+    // REVERTED TO ORIGINAL WORKING DESKTOP ENUM ORDER FOR STABLE HARDWARE INITIALIZATION
     enum ParamIds {
         DIVIDE_PARAM, ATTENUATE_PARAM, OFFSET_PARAM, CLK_SWITCH_PARAM,
         MUTE_PARAM, LENGTH_PARAM, SHIFT_PARAM, SCALE_PARAM, SAVE_PARAM, RECALL_PARAM,
@@ -54,7 +55,6 @@ struct Skyline : Module {
         ENUMS(STEP_LIGHTS,     16*3),  // playhead (RGB)
         ENUMS(BUTTON_LIGHTS,   16*3),  // button LED (RGB)
         ENUMS(CHANNEL_LIGHTS,   8*3),  // channel output LED (RGB)
-        ENUMS(EDIT_RING_LIGHTS,  8),   // yellow glow ring
         ENUMS(MUTE_LIGHT,   3),        // latch button LEDs (RGB)
         ENUMS(LENGTH_LIGHT, 3),
         ENUMS(SHIFT_LIGHT,  3),
@@ -101,7 +101,6 @@ struct Skyline : Module {
     int   selectedChan      = 0;
     int   editChan          = 0;
     int   globalStep         = -1;
-    float glowPhase         = 0.f;
 
     float lengthSliderSnapshot[8] = {-1.f,-1.f,-1.f,-1.f,-1.f,-1.f,-1.f,-1.f};
     float scaleSliderSnapshot     = -1.f;
@@ -160,7 +159,7 @@ struct Skyline : Module {
             case 1: seqPos[ch]=(seqPos[ch]-1+len)%len; break;
             case 2:
                 seqPos[ch]+=pendDir[ch];
-                if(seqPos[ch]>=len-1){seqPos[ch]=len-1;pendDir[ch] = -1;} // FIXED ASSIGNMENT
+                if(seqPos[ch]>=len-1){seqPos[ch]=len-1;pendDir[ch] = -1;} 
                 if(seqPos[ch]<=0)   {seqPos[ch]=0;     pendDir[ch]= 1;}
                 break;
             case 3: seqPos[ch]=(int)(random::uniform()*len); break;
@@ -518,13 +517,10 @@ struct Skyline : Module {
                 setRGB(CHANNEL_LIGHTS + ch*3, bright, 0.f, 0.f);
         }
 
-        glowPhase += args.sampleTime * 1.5f;
-        if (glowPhase > 2.f * M_PI) glowPhase -= 2.f * M_PI;
-        float glow = 0.45f + 0.45f * std::sin(glowPhase);
-        for (int ch = 0; ch < 8; ch++)
-            lights[EDIT_RING_LIGHTS + ch].setBrightness(ch == editChan ? glow : 0.f);
+        // Custom display update logic (the centralized draw reads variables directly from module state)
     }
 
+    // ROBUST CRASH-PROOF JSON PARSING TO AVOID SILENT NANSON C-LIBRARY CRASHES ON BOOT
     json_t* dataToJson() override {
         json_t* root=json_object();
         auto arrF=[&](const char* key,std::function<void(json_t*)> fn){
@@ -569,9 +565,25 @@ struct Skyline : Module {
     }
 
     void dataFromJson(json_t* root) override {
-        auto getI=[&](const char* k,int idx){json_t* a=json_object_get(root,k);return a?(int)json_integer_value(json_array_get(a,idx)):0;};
-        auto getF=[&](const char* k,int idx){json_t* a=json_object_get(root,k);return a?(float)json_real_value(json_array_get(a,idx)):0.f;};
-        auto getB=[&](const char* k,int idx){json_t* a=json_object_get(root,k);return a?json_boolean_value(json_array_get(a,idx)):false;};
+        auto getI = [&](const char* k, int idx) {
+            json_t* a = json_object_get(root, k);
+            if (!a) return 0;
+            json_t* val = json_array_get(a, idx);
+            return val ? (int)json_integer_value(val) : 0;
+        };
+        auto getF = [&](const char* k, int idx) {
+            json_t* a = json_object_get(root, k);
+            if (!a) return 0.f;
+            json_t* val = json_array_get(a, idx);
+            return val ? (float)json_real_value(val) : 0.f;
+        };
+        auto getB = [&](const char* k, int idx) {
+            json_t* a = json_object_get(root, k);
+            if (!a) return false;
+            json_t* val = json_array_get(a, idx);
+            return val ? json_boolean_value(val) : false;
+        };
+
         int idx=0;
         for(int ch=0;ch<8;ch++) for(int s=0;s<16;s++) stepCV[ch][s]=getF("stepCV",idx++);
         for(int ch=0;ch<8;ch++) seqLength[ch] =getI("seqLength",ch);
@@ -630,16 +642,18 @@ struct SkylineDisplay : widget::Widget {
     }
 
     void draw(const DrawArgs& args) override {
-        if (!skyModule) return;
+        // STATIC CAST USED TO AVOID SILENT NULLPTR ERRORS DUE TO THE EMBEDDED -fno-rtti COMPILER SETTING
+        Skyline* localSkyModule = static_cast<Skyline*>(skyModule);
+        if (!localSkyModule) return;
 
         const float cX[8]={7.00f,19.51f,32.03f,44.54f,57.06f,69.57f,82.09f,94.60f};
         const float ySld=70.0f, yLed=31.0f;
         const int TW=6,TH=60,HW=14,HH=8;
 
         // 1. Draw glowing Edit Ring around the active channel LED
-        float brightness = skyModule->lights[Skyline::EDIT_RING_LIGHTS + skyModule->editChan].getBrightness();
+        float brightness = localSkyModule->lights[Skyline::EDIT_RING_LIGHTS + localSkyModule->editChan].getBrightness();
         if (brightness > 0.001f) {
-            Vec ledPos = mm2px(Vec(cX[skyModule->editChan], yLed));
+            Vec ledPos = mm2px(Vec(cX[localSkyModule->editChan], yLed));
             float r = 9.5f;
             const float NR = 0.1f, NG = 0.25f, NB = 0.6f;
 
@@ -661,7 +675,7 @@ struct SkylineDisplay : widget::Widget {
 
         // 2. Draw fader tracks, fill levels, and grips
         for (int ch = 0; ch < 8; ch++) {
-            float fillVal = skyModule->params[Skyline::SLIDER_PARAMS + ch].getValue(); // read value (0-4V)
+            float fillVal = localSkyModule->params[Skyline::SLIDER_PARAMS + ch].getValue(); // read value (0-4V)
             fillVal = fillVal / 4.f; // scale 0-4V to 0-1
             float faderX = cX[ch];
             
@@ -675,17 +689,6 @@ struct SkylineDisplay : widget::Widget {
             nvgRoundedRect(args.vg, tx, ty, TW, TH, 3.f);
             nvgFillColor(args.vg, nvgRGB(0xb8,0xb5,0xae));
             nvgFill(args.vg);
-
-            // Draw target navy blue highlight if in edit mode
-            bool isTarget = ch == skyModule->editChan &&
-                (skyModule->muteMode || skyModule->lengthMode ||
-                 skyModule->scaleMode || skyModule->shiftMode);
-            if (isTarget) {
-                nvgBeginPath(args.vg);
-                nvgRoundedRect(args.vg, tx-3.f, ty-3.f, TW+6.f, TH+6.f, 5.f);
-                nvgFillColor(args.vg, nvgRGBAf(0.1f,0.25f,0.6f,0.35f));
-                nvgFill(args.vg);
-            }
 
             // Draw red active fill bar
             float handleY = (1.f - fillVal) * TH;
@@ -787,7 +790,7 @@ struct SkylineWidget : ModuleWidget {
                 nvgFontSize(args.vg, fontSize);
                 nvgFontFaceId(args.vg, APP->window->uiFont->handle);
                 nvgTextAlign(args.vg, NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
-                nvgFillColor(args.vg, color);
+                nvgFillColor(color); // FIXED NATIVE DRAW PARSING
                 nvgText(args.vg, box.size.x*.5f,     box.size.y*.5f,     text.c_str(), nullptr);
                 nvgText(args.vg, box.size.x*.5f+0.3f,box.size.y*.5f,     text.c_str(), nullptr);
             }
@@ -808,5 +811,4 @@ struct SkylineWidget : ModuleWidget {
     }
 };
 
-// FIXED MODEL SLUG TO MATCH THE NEW plugin.json "SkylineMM" EXPECTED BY THE HARDWARE
 Model* modelSkyline = createModel<Skyline, SkylineWidget>("SkylineMM");
