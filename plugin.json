@@ -1,19 +1,25 @@
 {
-  "slug": "maybe",
-  "name": "maybe",
-  "version": "2.0.1",
+  "slug": "maybe-Skyline",
+  "name": "Skyline",
+  "version": "2.0.0",
   "license": "GPL-3.0-or-later",
   "brand": "maybe",
-  "author": "User",
-  "authorEmail": "user@github.com",
-  "authorUrl": "https://github.com/Grandsummoner",
-  "pluginUrl": "https://github.com/Grandsummoner/maybe",
+  "author": "YourName",
+  "authorEmail": "your-email@example.com",
+  "authorUrl": "",
+  "pluginUrl": "",
+  "manualUrl": "",
+  "sourceUrl": "",
+  "donateUrl": "",
   "modules": [
     {
       "slug": "Skyline",
       "name": "Skyline",
-      "description": "8 channel 16-step CV sequencer",
-      "tags": ["Sequencer"]
+      "description": "8-Channel CV Sequencer",
+      "tags": [
+        "Sequencer",
+        "Dual / Stereo"
+      ]
     }
   ]
 }
