@@ -527,6 +527,18 @@ struct Skyline : Module {
             lights[EDIT_RING_LIGHTS + ch].setBrightness(ch == editChan ? glow : 0.f);
 
         // Custom display update logic
+
+        // ============ TEMPORARY DEBUG — REMOVE AFTER TESTING ============
+        // Placed last so nothing later in process() overwrites it.
+        // Forces two lights on, bypassing all other logic, to test
+        // whether our own RGB light-setting renders on hardware at all.
+        // Step 1's tiny playhead LED should show solid RED.
+        // Step 2's actual button should glow solid GREEN. If either
+        // doesn't show that color no matter what, lights are a separate,
+        // real problem independent of clock/jacks.
+        lights[STEP_LIGHTS+0].setBrightness(1.f);     // step 1 tiny LED, red
+        lights[BUTTON_LIGHTS+3+1].setBrightness(1.f); // step 2 button, green
+        // ============ END TEMPORARY DEBUG ============
     }
 
     json_t* dataToJson() override {
