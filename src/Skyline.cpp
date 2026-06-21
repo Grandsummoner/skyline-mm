@@ -746,6 +746,23 @@ struct EditRingLight : widget::Widget {
 // ============================================================
 // Widget
 // ============================================================
+// SkylinePort — replaces PJ301MPort everywhere in this plugin.
+// PJ301MPort calls setSvg(Svg::load(asset::system("res/ComponentLibrary/
+// PJ301M.svg"))) — asset::system is VCV's core/system component
+// library, which doesn't exist on the MetaModule firmware. That's the
+// exact same broken-asset-path bug that originally crashed the slider
+// (asset::sys there, asset::system here — same family). This mirrors
+// the proven slider fix: same recognized base class (app::SvgPort, so
+// the element translator still recognizes it as a JackInput/output),
+// loading from this plugin's own bundled res/ folder via asset::plugin
+// instead, which goes through the same SVG->PNG pipeline already
+// confirmed working for the panel and the fader graphics.
+struct SkylinePort : app::SvgPort {
+    SkylinePort() {
+        setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/SkylineJack.svg")));
+    }
+};
+
 struct SkylineWidget : ModuleWidget {
     SkylineWidget(Skyline* module) {
         setModule(module);
@@ -761,7 +778,7 @@ struct SkylineWidget : ModuleWidget {
         const float ySld=70.0f,yS1=104.0f,yS2=119.0f,ySLbl=126.5f;
 
         for(int ch=0;ch<8;ch++){
-            addOutput(createOutputCentered<PJ301MPort>(
+            addOutput(createOutputCentered<SkylinePort>(
                 mm2px(Vec(cX[ch],yOut)),module,Skyline::CV_OUTPUTS+ch));
 
             auto* ring = new EditRingLight;
@@ -774,8 +791,8 @@ struct SkylineWidget : ModuleWidget {
                 mm2px(Vec(cX[ch],yLed)),module,Skyline::CHANNEL_LIGHTS+ch*3));
         }
 
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(xJack,yClk)),module,Skyline::CLOCK_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(xJack,yRst)),module,Skyline::RESET_INPUT));
+        addInput(createInputCentered<SkylinePort>(mm2px(Vec(xJack,yClk)),module,Skyline::CLOCK_INPUT));
+        addInput(createInputCentered<SkylinePort>(mm2px(Vec(xJack,yRst)),module,Skyline::RESET_INPUT));
         addParam(createParamCentered<CKSSThree>(mm2px(Vec(xSwitch,yKnob)),module,Skyline::CLK_SWITCH_PARAM));
         addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(xK1,yKnob)),module,Skyline::OFFSET_PARAM));
         addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(xK2,yKnob)),module,Skyline::ATTENUATE_PARAM));
