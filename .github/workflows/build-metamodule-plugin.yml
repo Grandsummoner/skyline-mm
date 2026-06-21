@@ -70,7 +70,7 @@ jobs:
           python3 ${{ github.workspace }}/metamodule-plugin-sdk/scripts/SvgToPng.py --input ${{ github.workspace }}/res/SkylineFaderHandle.svg --output ${{ github.workspace }}/assets/ --height 8
 
           # 2c. Convert the SkylinePort jack SVG the same way
-          python3 ${{ github.workspace }}/metamodule-plugin-sdk/scripts/SvgToPng.py --input ${{ github.workspace }}/res/SkylineJack.svg --output ${{ github.workspace }}/assets/ --height 28
+          python3 ${{ github.workspace }}/metamodule-plugin-sdk/scripts/SvgToPng.py --input ${{ github.workspace }}/res/SkylineJack.svg --output ${{ github.workspace }}/assets/ --height 18
           
           # 3. Print assets directory contents to console to verify the PNG was created
           echo "=== VERIFYING GENERATED ASSETS ==="
