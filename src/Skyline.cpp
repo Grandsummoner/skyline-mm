@@ -775,7 +775,7 @@ struct SkylineWidget : ModuleWidget {
         const float yOut=22.5f,yLed=31.0f;
         const float yClk=46.0f,yKnob=53.5f,yRst=61.0f;
         const float yB1=46.0f,yB2=61.0f;
-        const float ySld=70.0f,yS1=104.0f,yS2=119.0f,ySLbl=126.5f;
+        const float ySld=62.0f,yS1=104.0f,yS2=119.0f,ySLbl=126.5f;
 
         for(int ch=0;ch<8;ch++){
             addOutput(createOutputCentered<SkylinePort>(
