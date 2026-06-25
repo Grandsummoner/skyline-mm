@@ -654,22 +654,35 @@ struct SlimFader : app::SvgSlider {
     SlimFader(){
         setBackgroundSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/SkylineFaderBg.svg")));
         setHandleSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/SkylineFaderHandle.svg")));
+        
+#if defined(ARCH_WIN) || defined(ARCH_MAC) || defined(ARCH_LIN)
+        // ============================================================
+        // DESKTOP VCV RACK LAYOUT (TH = 60)
+        // Centered background and full-limit handle travel
+        // ============================================================
         background->box.size = Vec(TW, TH);
-        // setBackgroundSvg() set both box.size AND fb->box.size to the
-        // background SVG's native size (TW x TH). That fb canvas is
-        // narrower than the handle (HW) and shorter than the full
-        // widget (TH+HH), so the handle was being rendered into a
-        // framebuffer too small to hold it and got clipped on both
-        // sides instead of centered in the wider hit-box -- that's
-        // the visual misalignment. Grow the fb to the full widget
-        // size, and center the (narrower) track inside it.
+        background->box.pos = Vec((HW - TW) / 2.f, HH / 2.f); 
+        handle->box.size = Vec(HW, HH);
+        setHandlePosCentered(
+            Vec(HW/2.f, TH + HH/2.f),  // value 0 -> bottom (flush to bottom of visual slot)
+            Vec(HW/2.f, HH/2.f)        // value 1 -> top (flush to top of visual slot)
+        );
+        box.size = Vec(HW, TH+HH);     // 68px
+#else
+        // ============================================================
+        // METAMODULE HARDWARE LAYOUT (TH = 40)
+        // 100% identical to your original geometry parameters
+        // ============================================================
+        background->box.size = Vec(TW, TH);
         background->box.pos = Vec((HW - TW) / 2.f, 0.f);
         handle->box.size = Vec(HW, HH);
         setHandlePosCentered(
-            Vec(HW/2.f, TH - HH/2.f),  // value 0 -> bottom (centered on box width, not track width)
-            Vec(HW/2.f, TM + HH/2.f)   // value 1 -> top, with a margin below the very top edge
+            Vec(HW/2.f, TH - HH/2.f),  // value 0 -> bottom
+            Vec(HW/2.f, TM + HH/2.f)   // value 1 -> top
         );
-        box.size = Vec(HW, TH+HH);
+        box.size = Vec(HW, TH+HH);     // 48px
+#endif
+
         fb->box.size = box.size;       // fb must be >= box, or it clips the handle/travel range
         fb->setDirty();
     }
