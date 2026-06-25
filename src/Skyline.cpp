@@ -676,8 +676,15 @@ struct SlimFader : app::SvgSlider {
     void onButton(const ButtonEvent& e) override {
         if(e.action==GLFW_PRESS&&e.button==GLFW_MOUSE_BUTTON_LEFT){
             dragging=true;
-            // Capture normalized value in range [0.f, 1.f] instead of scaled range [0.f, 4.f]
-            dragStartVal=getParamQuantity()?getParamQuantity()->getNormalValue():0.f;
+            dragStartVal = 0.f;
+            if (getParamQuantity()) {
+                float val = getParamQuantity()->getValue();
+                float min = getParamQuantity()->getMinValue();
+                float max = getParamQuantity()->getMaxValue();
+                if (max > min) {
+                    dragStartVal = (val - min) / (max - min);
+                }
+            }
             e.consume(this);
         }
         if(e.action==GLFW_RELEASE) dragging=false;
@@ -704,8 +711,11 @@ struct SlimFader : app::SvgSlider {
         float sensitivity = (APP->window->getMods() & RACK_MOD_CTRL) ? 240.f : 60.f;
         float delta = -e.mouseDelta.y / sensitivity;
         dragStartVal = clamp(dragStartVal + delta, 0.f, 1.f);
-        // Correctly sets parameter value normalized relative to the configured scale range
-        getParamQuantity()->setNormalValue(dragStartVal);
+        
+        float min = getParamQuantity()->getMinValue();
+        float max = getParamQuantity()->getMaxValue();
+        float val = min + dragStartVal * (max - min);
+        getParamQuantity()->setValue(val);
     }
     void onDoubleClick(const DoubleClickEvent& e) override {
         if(getParamQuantity()) getParamQuantity()->reset();
@@ -783,7 +793,7 @@ struct SkylineWidget : ModuleWidget {
         const float yOut=22.5f,yLed=31.0f;
         const float yClk=46.0f,yKnob=53.5f,yRst=61.0f;
         const float yB1=46.0f,yB2=61.0f;
-        const float ySld=70.0f,yS1=104.0f,yS2=119.0f,ySLbl=126.5f;
+        const float ySld=70.0f,yS1=104.0f,yS2=119.0f;
 
         for(int ch=0;ch<8;ch++){
             addOutput(createOutputCentered<SkylinePort>(
